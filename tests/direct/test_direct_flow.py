@@ -123,3 +123,62 @@ def test_correction_supersedes_the_previous_version(molfgraph):
 
     receipts = json.loads(molfgraph.list_receipts(args=[0, 50]))
     assert any(item["kind"] == "CORRECTION" for item in receipts["items"])
+
+
+# ---------------------------------------------------------------------------
+# Runtime-representative check for the two analysis paths that use different
+# consensus wrappers. extract_law_text runs under strict_eq, where the law text
+# itself is inside the value validators must agree on byte for byte;
+# compare_jurisdictions runs under prompt_comparative. Both must complete, and
+# neither may replace its extracted body with a generic message.
+# ---------------------------------------------------------------------------
+
+UK_CMA_S1 = "https://www.legislation.gov.uk/ukpga/1990/18/section/1"
+
+
+def _latest_of(molfgraph, kind: str) -> dict:
+    page = json.loads(molfgraph.list_analyses(args=[0, 50]))
+    matching = [item for item in page["items"] if item["kind"] == kind]
+    assert matching, f"no {kind} analysis was recorded"
+    return matching[-1]
+
+
+def test_extract_law_text_completes_and_preserves_the_provision(molfgraph):
+    """The strict path must finish and keep the statutory text it extracted."""
+    written = molfgraph.extract_law_text(
+        args=["Computer Misuse Act 1990, s 1", "UK", json.dumps([UK_CMA_S1])]
+    )
+    assert tx_execution_succeeded(written)
+
+    result = _latest_of(molfgraph, "extract_law_text")
+    body = result["exact_text_or_summary"]
+
+    # The whole point of this path: a real provision, not a placeholder.
+    assert body, "extract_law_text stored an empty body"
+    assert body.strip() != "Validators did not reach consensus on this analysis."
+    assert len(body) > 200, f"body looks truncated: {body[:120]!r}"
+    assert "unauthorised" in body.lower() or "offence" in body.lower()
+
+    # Strict extraction is comparative prose free: notes are cleared by design.
+    assert result["notes"] == ""
+    assert result["disclaimer"]
+
+
+def test_compare_jurisdictions_completes_and_preserves_its_body(molfgraph):
+    """The comparative path must finish and keep its comparison text."""
+    written = molfgraph.compare_jurisdictions(
+        args=["Unauthorised access to computer material", "UK", "US", json.dumps([UK_CMA_S1])]
+    )
+    assert tx_execution_succeeded(written)
+
+    result = _latest_of(molfgraph, "compare_jurisdictions")
+    body = result["exact_text_or_summary"]
+
+    assert body, "compare_jurisdictions stored an empty body"
+    assert body.strip() != "Validators did not reach consensus on this analysis."
+    # Either jurisdiction may be unsupported by the sources, and the contract is
+    # expected to say so rather than invent. What it may not do is lose the body.
+    assert result["status"] in (
+        "VERIFIED", "INSUFFICIENT_EVIDENCE", "UNAVAILABLE", "CONFLICT",
+    )
+    assert result["disclaimer"]

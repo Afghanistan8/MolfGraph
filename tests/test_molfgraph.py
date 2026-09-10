@@ -303,6 +303,113 @@ def test_extract_law_text_uses_strict_equivalence(contract, gl_env):
     assert result["notes"] == ""
 
 
+LAW_TEXT = (
+    "A person is guilty of an offence if he causes a computer to perform any function "
+    "with intent to secure access to any program or data held in any computer, the access "
+    "he intends to secure is unauthorised, and he knows at the time that that is the case."
+)
+
+
+def test_extract_law_text_preserves_the_exact_provision(contract, gl_env):
+    """Regression: the extracted provision must survive the whole path.
+
+    The leader puts the law text inside the value strict_eq compares, so the
+    text is part of what validators agree on. It must come back in the stored
+    analysis and in the ledger, not be replaced by a generic message.
+    """
+    gl_env.nondet.web.set(UK_SOURCE, "Computer Misuse Act 1990 section 1. " + LAW_TEXT)
+    gl_env.nondet.set_prompt(json.dumps({
+        "status": "VERIFIED",
+        "citation": "Computer Misuse Act 1990, s 1",
+        "exact_text_or_summary": LAW_TEXT,
+        "applicability_score": 90,
+        "confidence": "HIGH",
+        "notes": "verbatim extract",
+    }))
+
+    returned = json.loads(contract.extract_law_text(
+        "Computer Misuse Act 1990, s 1", "UK", json.dumps([UK_SOURCE])
+    ))
+    assert returned["status"] == "VERIFIED"
+    assert returned["exact_text_or_summary"] == LAW_TEXT
+    assert returned["citation"] == "Computer Misuse Act 1990, s 1"
+
+    # It must also be what was persisted, not just what was handed back.
+    stored = json.loads(contract.get_analysis(returned["analysis_id"]))
+    assert stored["exact_text_or_summary"] == LAW_TEXT
+
+    # And it must survive the ledger view the console reads.
+    listed = json.loads(contract.list_analyses(0, 10))["items"]
+    assert any(item["exact_text_or_summary"] == LAW_TEXT for item in listed)
+
+
+def test_extract_law_text_agrees_on_the_law_text_itself(contract, gl_env, mod):
+    """The provision is inside the consensus key, so a text change breaks agreement.
+
+    This is what makes the extraction trustworthy: validators cannot agree on a
+    citation while disagreeing about the words under it.
+    """
+    gl_env.nondet.web.set(UK_SOURCE, "section text")
+    flip = {"n": 0}
+
+    def drifting(_prompt):
+        flip["n"] += 1
+        # Same citation and status every time; only the law text moves.
+        return json.dumps({
+            "status": "VERIFIED",
+            "citation": "Computer Misuse Act 1990, s 1",
+            "exact_text_or_summary": LAW_TEXT + (" " * flip["n"]) + str(flip["n"]),
+            "applicability_score": 90,
+            "confidence": "HIGH",
+        })
+
+    gl_env.nondet.set_prompt(drifting)
+    result = json.loads(contract.extract_law_text("s 1", "UK", json.dumps([UK_SOURCE])))
+    assert result["status"] == "INSUFFICIENT_EVIDENCE"
+    assert result["exact_text_or_summary"] == ""
+
+
+def test_compare_jurisdictions_completes_and_keeps_its_body(contract, gl_env):
+    """The other advertised path must complete and keep its comparison text."""
+    body = "Both jurisdictions criminalise unauthorised access."
+    gl_env.nondet.web.set(UK_SOURCE, "UK statutory text.")
+    gl_env.nondet.web.set(US_SOURCE, "US statutory text.")
+    gl_env.nondet.set_prompt(json.dumps({
+        "status": "VERIFIED",
+        "citation": "18 U.S.C. 1030(a)(2)",
+        "exact_text_or_summary": body,
+        "applicability_score": 72,
+        "confidence": "HIGH",
+        "notes": "Material differences listed.",
+    }))
+
+    result = json.loads(contract.compare_jurisdictions(
+        "Unauthorised access", "US", "UK", json.dumps([US_SOURCE, UK_SOURCE])
+    ))
+    assert result["status"] == "VERIFIED"
+    assert result["kind"] == "compare_jurisdictions"
+    assert result["exact_text_or_summary"] == body
+    assert set(result["sources"]) == {US_SOURCE, UK_SOURCE}
+
+    stored = json.loads(contract.get_analysis(result["analysis_id"]))
+    assert stored["exact_text_or_summary"] == body
+
+
+def test_both_advertised_paths_use_their_declared_consensus_wrapper(contract, gl_env, mod):
+    """extract_law_text is strict; compare_jurisdictions is comparative."""
+    gl_env.nondet.web.set(UK_SOURCE, "text")
+    gl_env.nondet.web.set(US_SOURCE, "text")
+    gl_env.nondet.set_prompt(verified_prompt())
+
+    gl_env.eq_principle.calls = []
+    contract.extract_law_text("s 1", "UK", json.dumps([UK_SOURCE]))
+    assert [c[0] for c in gl_env.eq_principle.calls] == ["strict_eq"]
+
+    gl_env.eq_principle.calls = []
+    contract.compare_jurisdictions("Topic", "US", "UK", json.dumps([US_SOURCE]))
+    assert [c[0] for c in gl_env.eq_principle.calls] == ["prompt_comparative"]
+
+
 def test_extract_law_text_rejects_non_deterministic_leaders(contract, gl_env):
     gl_env.nondet.web.set(US_SOURCE, "Operative text of the provision.")
     flip = {"n": 0}
