@@ -1,0 +1,125 @@
+{
+  "disclaimer": "Decision-support only — not legal advice. Professional review required. These studies are fictional teaching material about public law. They describe no real person and no real matter.",
+  "note": "expected_sha256 is intentionally empty. Compute the digest of the exact bytes you fetch before pinning a source as evidence; MolfGraph refuses a digest it cannot verify.",
+  "studies": [
+    {
+      "title": "Remote credential reuse under the Digital Access Offences Act",
+      "country": "US",
+      "subject_ref": "matter-alpha-2026",
+      "crime_or_charge": "Unauthorised access to a protected computer system",
+      "question": "Does the charging authority treat reuse of previously issued credentials, after access was administratively revoked, as satisfying the 'without authorisation' element?",
+      "method": "Element-by-element comparison of the charging instrument against the published statutory text and the publisher's own annotations, with each element marked supported, unsupported, or not addressed.",
+      "conclusion": "The published elements are addressed by the described application. The 'without authorisation' element rests on revocation notice, which the sources treat as a factual question left to the tribunal.",
+      "records": [
+        {
+          "record_type": "CRIME",
+          "text": "Charged conduct: continued use of credentials issued during employment, after the employer recorded an administrative revocation but before the credentials were technically disabled.",
+          "source_uris": ["https://uscode.house.gov/browse.xhtml"],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "QUESTION",
+          "text": "Does administrative revocation, absent technical enforcement, satisfy the 'without authorisation' element as published?",
+          "source_uris": [],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "METHOD",
+          "text": "Each statutory element was matched to a sentence in the charging instrument. Elements with no matching sentence were recorded as not addressed rather than as absent.",
+          "source_uris": [],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "CONCLUSION",
+          "text": "All published elements are addressed. The revocation-notice element is fact-dependent and the sources do not resolve it.",
+          "source_uris": [],
+          "expected_sha256": []
+        }
+      ]
+    },
+    {
+      "title": "Revoked credential reuse under the Computer Access Provisions",
+      "country": "UK",
+      "subject_ref": "matter-beta-2026",
+      "crime_or_charge": "Unauthorised access to computer material",
+      "question": "Does the charging authority treat reuse of previously issued credentials, after access was administratively revoked, as satisfying the 'unauthorised' element?",
+      "method": "Element-by-element comparison of the charging instrument against the published statutory text and the publisher's own annotations, with each element marked supported, unsupported, or not addressed.",
+      "conclusion": "The published elements are addressed by the described application. The 'unauthorised' element rests on the accused's knowledge of revocation, which the sources treat as a factual question left to the tribunal.",
+      "records": [
+        {
+          "record_type": "CRIME",
+          "text": "Charged conduct: continued use of credentials issued during a contract, after the contracting party recorded revocation but before the credentials were technically disabled.",
+          "source_uris": ["https://www.legislation.gov.uk/ukpga/1990/18/section/1"],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "QUESTION",
+          "text": "Does administrative revocation, absent technical enforcement, satisfy the 'unauthorised' element as published?",
+          "source_uris": [],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "METHOD",
+          "text": "Each statutory element was matched to a sentence in the charging instrument. Elements with no matching sentence were recorded as not addressed rather than as absent.",
+          "source_uris": [],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "CONCLUSION",
+          "text": "All published elements are addressed. The knowledge element is fact-dependent and the sources do not resolve it.",
+          "source_uris": [],
+          "expected_sha256": []
+        }
+      ]
+    },
+    {
+      "title": "Screening the same credential-reuse charge against the Data Custody Amendment",
+      "country": "US",
+      "subject_ref": "matter-gamma-2026",
+      "crime_or_charge": "Unauthorised access to a protected computer system",
+      "question": "Does the charging authority treat reuse of previously issued credentials, after access was administratively revoked, as satisfying the 'without authorisation' element?",
+      "method": "Element-by-element comparison of the charging instrument against the published statutory text and the publisher's own annotations, with each element marked supported, unsupported, or not addressed.",
+      "conclusion": "Two published elements are not addressed. The amending instrument added an intent requirement that the described application does not engage, so the earlier reading no longer follows from the published text.",
+      "records": [
+        {
+          "record_type": "JUDGEMENT",
+          "text": "The publisher's annotation records that a later amending instrument inserted an intent requirement into the same subsection.",
+          "source_uris": ["https://www.govinfo.gov/app/collection/uscode"],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "QUESTION",
+          "text": "Does the amended subsection still reach revoked-credential reuse absent proof of intent?",
+          "source_uris": [],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "METHOD",
+          "text": "The amended text was compared against the pre-amendment text element by element, with added elements listed separately.",
+          "source_uris": [],
+          "expected_sha256": []
+        },
+        {
+          "record_type": "CONCLUSION",
+          "text": "The intent element is not addressed by the described application, so the elements are not fully satisfied on the published text.",
+          "source_uris": [],
+          "expected_sha256": []
+        }
+      ]
+    }
+  ],
+  "proposed_relations": [
+    {
+      "from_title": "Remote credential reuse under the Digital Access Offences Act",
+      "to_title": "Revoked credential reuse under the Computer Access Provisions",
+      "claimed_relation": "DIRECT_REPLICATION",
+      "rationale": "Same question, same element-by-element method, and consistent conclusions across two jurisdictions whose published elements align."
+    },
+    {
+      "from_title": "Remote credential reuse under the Digital Access Offences Act",
+      "to_title": "Screening the same credential-reuse charge against the Data Custody Amendment",
+      "claimed_relation": "CONTRADICTORY_RESULT",
+      "rationale": "Comparable question and method, but the amending instrument adds an element that reverses the conclusion."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+# Contract sources must stay LF. The GenVM reads the magic header from the
+# first line, and a CRLF checkout on Windows is not worth the risk.
+* text=auto eol=lf
+*.py text eol=lf
+*.png binary
+*.jpg binary

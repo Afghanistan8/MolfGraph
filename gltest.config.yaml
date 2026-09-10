@@ -1,0 +1,30 @@
+# MolfGraph -- genlayer-test configuration.
+#
+# The offline suite in tests/ needs none of this: it runs against the GenVM
+# double in tests/conftest.py. This file drives the optional direct-mode tests
+# in tests/direct/ and the `gltest` deploy helpers.
+#
+#   MOLFGRAPH_DIRECT=1 pytest tests/direct -q --network studionet
+
+networks:
+  default: studionet
+
+  studionet:
+    id: 61999
+    url: https://studio.genlayer.com/api
+    leader_only: false
+    default_wait_interval: 5000
+    default_wait_retries: 90
+
+  localnet:
+    id: 61999
+    url: http://127.0.0.1:4000/api
+    leader_only: false
+    default_wait_interval: 3000
+    default_wait_retries: 50
+
+paths:
+  contracts: contracts
+  artifacts: artifacts
+
+environment: .env
