@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "genlayer-js";
-import type { Account } from "genlayer-js/types";
 import { CHAIN, CONTRACT_ADDRESS } from "./config";
+import { ensureNetwork } from "./lib/wallet";
 import type { TxState } from "./types";
+import type { WalletState } from "./useWallet";
 
 /**
  * The single seam between MolfGraph's UI and the Intelligent Contract.
  *
  * Two rules are enforced here rather than in the panels:
- *   1. Reads never require a wallet.
+ *   1. Reads never require a wallet. They use a chain-only client.
  *   2. A write is only believed once its receipt has actually finalised. A
  *      submitted or pending transaction never updates the accepted graph.
+ *
+ * Writes are signed by the user's own injected wallet, so MolfGraph never
+ * holds a private key.
  */
+
+type Hex = `0x${string}`;
 
 export interface TxOutcome<T> {
   hash: string;
@@ -22,6 +28,8 @@ export interface TxOutcome<T> {
 
 export interface GenLayerApi {
   ready: boolean;
+  /** A wallet is connected and on the GenLayer chain, so writes are allowed. */
+  canWrite: boolean;
   address: string;
   read: <T>(functionName: string, args?: unknown[]) => Promise<T>;
   readRaw: (functionName: string, args?: unknown[]) => Promise<string>;
@@ -78,16 +86,27 @@ function receiptFinalized(receipt: any): boolean {
   return true;
 }
 
-export function useGenLayer(account: Account | null): GenLayerApi {
+/** Turn raw genlayer-js and wallet errors into something a reader can act on. */
+export function humanizeError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const m = raw.toLowerCase();
+  if (/user rejected|user denied|4001|rejected the request/.test(m))
+    return "You declined the request in your wallet.";
+  if (/insufficient funds|insufficient balance|not enough/.test(m))
+    return "This account has no GEN for gas. Fund the address on StudioNet and retry.";
+  if (/wrong network|chain|switch/.test(m)) return raw;
+  return raw;
+}
+
+export function useGenLayer(wallet: WalletState): GenLayerApi {
   const [tx, setTx] = useState<TxState>({ phase: "idle" });
   const [version, setVersion] = useState(0);
-  const initialised = useRef(false);
 
-  const client = useMemo(() => {
-    return createClient(account ? { chain: CHAIN, account } : { chain: CHAIN });
-  }, [account]);
+  // Reads are wallet-free, so every panel loads for anyone.
+  const readClient = useMemo(() => createClient({ chain: CHAIN }), []);
 
   const ready = Boolean(CONTRACT_ADDRESS) && CONTRACT_ADDRESS.startsWith("0x");
+  const canWrite = ready && wallet.connected && wallet.onChain;
 
   const bump = useCallback(() => setVersion((value) => value + 1), []);
   const resetTx = useCallback(() => setTx({ phase: "idle" }), []);
@@ -103,14 +122,14 @@ export function useGenLayer(account: Account | null): GenLayerApi {
   const readRaw = useCallback(
     async (functionName: string, args: unknown[] = []): Promise<string> => {
       assertReady();
-      const value = await (client as any).readContract({
+      const value = await (readClient as any).readContract({
         address: CONTRACT_ADDRESS,
         functionName,
         args,
       });
       return typeof value === "string" ? value : JSON.stringify(value);
     },
-    [assertReady, client],
+    [assertReady, readClient],
   );
 
   const read = useCallback(
@@ -123,14 +142,25 @@ export function useGenLayer(account: Account | null): GenLayerApi {
   const write = useCallback(
     async <T,>(functionName: string, args: unknown[] = []): Promise<TxOutcome<T>> => {
       assertReady();
-      if (!account) throw new Error("Connect a wallet before writing to MolfGraph.");
+      if (!wallet.connected) {
+        throw new Error("Connect a wallet before writing to MolfGraph.");
+      }
 
       setTx({ phase: "submitted", message: functionName });
       try {
-        if (!initialised.current && typeof (client as any).initializeConsensusSmartContract === "function") {
-          await (client as any).initializeConsensusSmartContract();
-          initialised.current = true;
-        }
+        // Hard gate: guarantees the wallet is on the GenLayer chain, or throws.
+        const provider = await ensureNetwork();
+        const accounts = (await provider.request({
+          method: "eth_requestAccounts",
+        })) as string[];
+        const signer = accounts?.[0];
+        if (!signer) throw new Error("Wallet not connected.");
+
+        const client = createClient({
+          chain: CHAIN,
+          account: signer as Hex,
+          provider,
+        } as any);
 
         const hash: string = await (client as any).writeContract({
           address: CONTRACT_ADDRESS,
@@ -166,16 +196,16 @@ export function useGenLayer(account: Account | null): GenLayerApi {
           raw: receipt,
         };
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        setTx({ phase: "failed", message });
+        setTx({ phase: "failed", message: humanizeError(cause) });
         throw cause;
       }
     },
-    [account, assertReady, bump, client],
+    [assertReady, bump, wallet.connected],
   );
 
   return {
     ready,
+    canWrite,
     address: CONTRACT_ADDRESS,
     read,
     readRaw,

@@ -1,98 +1,86 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createAccount, generatePrivateKey } from "genlayer-js";
-import type { Account } from "genlayer-js/types";
-import { WALLET_STORAGE_KEY } from "./config";
-
 /**
- * A burner wallet, or a private key the lawyer already controls.
+ * useWallet -- injected browser wallet connection for MolfGraph.
  *
- * Reads never touch this hook: every MolfGraph view works without a wallet.
+ * MolfGraph signs through the user's own wallet (MetaMask, OKX, or any
+ * EIP-6963 wallet), switched onto the GenLayer chain. There is no in-browser
+ * key handling: the app never sees a private key.
+ *
+ * Reads never touch this hook. Every MolfGraph view works without a wallet.
  * Only writes need a signer.
  */
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  connect as walletConnect,
+  disconnect as walletDisconnect,
+  getDiscoveredWallets,
+  getState,
+  hasWallet as hasInjectedWallet,
+  subscribe,
+  trySilentReconnect,
+  type DiscoveredWallet,
+  type WalletSnapshot,
+} from "./lib/wallet";
+
+export type { DiscoveredWallet } from "./lib/wallet";
 
 export interface WalletState {
-  account: Account | null;
-  address: string;
+  address: string | null;
+  /** A wallet is connected. */
+  connected: boolean;
+  /** Connected AND on the GenLayer chain. Writes require this. */
+  onChain: boolean;
+  /** Injected wallets discovered via EIP-6963. */
+  discovered: DiscoveredWallet[];
+  /** Any injected provider is present in this browser. */
   hasWallet: boolean;
-  createBurner: () => void;
-  importKey: (privateKey: string) => void;
-  forget: () => void;
-  exportKey: () => string | null;
-  error: string;
-}
-
-function readStoredKey(): string | null {
-  try {
-    return window.localStorage.getItem(WALLET_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredKey(value: string | null): void {
-  try {
-    if (value === null) window.localStorage.removeItem(WALLET_STORAGE_KEY);
-    else window.localStorage.setItem(WALLET_STORAGE_KEY, value);
-  } catch {
-    /* private browsing: the wallet simply does not persist */
-  }
-}
-
-function normaliseKey(raw: string): `0x${string}` {
-  const trimmed = raw.trim();
-  const hex = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
-  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-    throw new Error("A private key is 64 hex characters, with or without the 0x prefix.");
-  }
-  return `0x${hex.toLowerCase()}` as `0x${string}`;
+  connect: (detail?: DiscoveredWallet) => Promise<{ ok: boolean; error?: string }>;
+  disconnect: () => void;
 }
 
 export function useWallet(): WalletState {
-  const [privateKey, setPrivateKey] = useState<string | null>(() => readStoredKey());
-  const [error, setError] = useState("");
+  const [snap, setSnap] = useState<WalletSnapshot>(() => getState());
+  const [discovered, setDiscovered] = useState<DiscoveredWallet[]>(() =>
+    getDiscoveredWallets(),
+  );
 
   useEffect(() => {
-    writeStoredKey(privateKey);
-  }, [privateKey]);
-
-  const account = useMemo<Account | null>(() => {
-    if (!privateKey) return null;
-    try {
-      return createAccount(privateKey as `0x${string}`);
-    } catch {
-      return null;
-    }
-  }, [privateKey]);
-
-  const createBurner = useCallback(() => {
-    setError("");
-    setPrivateKey(generatePrivateKey());
+    const unsub = subscribe(setSnap);
+    // Wallets announce themselves asynchronously, so re-read shortly after mount.
+    const timer = setTimeout(() => setDiscovered(getDiscoveredWallets()), 300);
+    void trySilentReconnect();
+    return () => {
+      unsub();
+      clearTimeout(timer);
+    };
   }, []);
 
-  const importKey = useCallback((raw: string) => {
+  const connect = useCallback(async (detail?: DiscoveredWallet) => {
     try {
-      setError("");
-      setPrivateKey(normaliseKey(raw));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not read that private key.");
+      await walletConnect(detail);
+      setDiscovered(getDiscoveredWallets());
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "Wallet connection failed.",
+      };
     }
   }, []);
 
-  const forget = useCallback(() => {
-    setError("");
-    setPrivateKey(null);
+  const disconnect = useCallback(() => {
+    walletDisconnect();
   }, []);
 
-  const exportKey = useCallback(() => privateKey, [privateKey]);
-
-  return {
-    account,
-    address: account?.address ?? "",
-    hasWallet: Boolean(account),
-    createBurner,
-    importKey,
-    forget,
-    exportKey,
-    error,
-  };
+  return useMemo(
+    () => ({
+      address: snap.address,
+      connected: Boolean(snap.address),
+      onChain: snap.onChain,
+      discovered,
+      hasWallet: hasInjectedWallet(),
+      connect,
+      disconnect,
+    }),
+    [snap.address, snap.onChain, discovered, connect, disconnect],
+  );
 }

@@ -26,6 +26,35 @@ export const CHAIN = {
 
 export const NETWORK_LABEL = "StudioNet";
 
+/**
+ * EVM `wallet_addEthereumChain` parameters for StudioNet, derived from the
+ * genlayer-js chain. The wallet layer uses these to add or switch an injected
+ * wallet onto StudioNet before it is allowed to sign.
+ */
+export const NET = {
+  chainId: "0x" + CHAIN_ID.toString(16),
+  chainIdDecimal: CHAIN_ID,
+  chainName: studionet.name,
+  rpcUrls: [RPC_URL],
+  blockExplorerUrls: studionet.blockExplorers
+    ? [studionet.blockExplorers.default.url]
+    : [],
+  nativeCurrency: studionet.nativeCurrency ?? {
+    name: "GEN",
+    symbol: "GEN",
+    decimals: 18,
+  },
+};
+
+/** Details a user needs if they add the chain to their wallet by hand. */
+export const CHAIN_HELP = {
+  name: NET.chainName,
+  chainIdDecimal: NET.chainIdDecimal,
+  chainIdHex: NET.chainId,
+  rpc: RPC_URL,
+  currency: NET.nativeCurrency.symbol,
+};
+
 export const EXPLORER_URL = "https://genlayer-explorer.vercel.app";
 
 export const DISCLAIMER =

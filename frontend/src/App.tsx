@@ -1,7 +1,16 @@
 import { useState } from "react";
-import { CHAIN_ID, CONTRACT_ADDRESS, DISCLAIMER, NETWORK_LABEL, RPC_URL } from "./config";
-import { useWallet } from "./useWallet";
+import {
+  CHAIN_HELP,
+  CHAIN_ID,
+  CONTRACT_ADDRESS,
+  DISCLAIMER,
+  NET,
+  NETWORK_LABEL,
+  RPC_URL,
+} from "./config";
+import { useWallet, type DiscoveredWallet, type WalletState } from "./useWallet";
 import { useGenLayer } from "./useGenLayer";
+import { shortAddress, switchNetwork } from "./lib/wallet";
 import { Alerts } from "./components/Alerts";
 import { Cases } from "./components/Cases";
 import { Ledger } from "./components/Ledger";
@@ -12,7 +21,7 @@ import { ScreenTools } from "./components/ScreenTools";
 import { Sources } from "./components/Sources";
 import { Stats } from "./components/Stats";
 import { StudyRegistry } from "./components/StudyRegistry";
-import { Notice, shortAddress } from "./components/ui";
+import { Notice } from "./components/ui";
 
 type TabId =
   | "screen"
@@ -39,19 +48,45 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "stats", label: "Stats" },
 ];
 
+/**
+ * Wallet controls: connect an injected browser wallet (MetaMask, OKX, or any
+ * EIP-6963 wallet), with a wrong-network guard and manual chain-add details.
+ */
 function WalletBar({
   wallet,
   phase,
   hash,
   message,
 }: {
-  wallet: ReturnType<typeof useWallet>;
+  wallet: WalletState;
   phase: string;
   hash?: string;
   message?: string;
 }) {
-  const [importing, setImporting] = useState(false);
-  const [draft, setDraft] = useState("");
+  const [open, setOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function doConnect(detail?: DiscoveredWallet) {
+    setError("");
+    setBusy(true);
+    const result = await wallet.connect(detail);
+    setBusy(false);
+    if (!result.ok) setError(result.error ?? "Wallet connection failed.");
+    else setOpen(false);
+  }
+
+  async function doSwitch() {
+    setError("");
+    setBusy(true);
+    try {
+      await switchNetwork();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Switch failed.");
+    }
+    setBusy(false);
+  }
 
   return (
     <div className="wallet">
@@ -60,65 +95,91 @@ function WalletBar({
           <i className="dot" />
           {NETWORK_LABEL} · chain {CHAIN_ID}
         </span>
-        {wallet.hasWallet ? (
-          <span className="badge" title={wallet.address}>
-            {shortAddress(wallet.address)}
-          </span>
-        ) : (
-          <span className="badge">read-only</span>
-        )}
-      </div>
 
-      <div className="row">
-        {wallet.hasWallet ? (
+        {wallet.connected ? (
           <>
-            <button className="small ghost" onClick={wallet.forget}>
+            {!wallet.onChain ? (
+              <button
+                className="small"
+                onClick={doSwitch}
+                disabled={busy}
+                title={`Switch to ${NET.chainName}`}
+              >
+                Switch network
+              </button>
+            ) : null}
+            <span className="badge" title={wallet.address ?? ""}>
+              {wallet.onChain ? "Connected" : "Wrong network"}{" "}
+              {shortAddress(wallet.address)}
+            </span>
+            <button className="small ghost" onClick={wallet.disconnect}>
               Disconnect
             </button>
-            <button
-              className="small ghost"
-              onClick={() => {
-                const key = wallet.exportKey();
-                if (key) void navigator.clipboard?.writeText(key);
-              }}
-            >
-              Copy key
-            </button>
           </>
         ) : (
-          <>
-            <button className="small primary" onClick={wallet.createBurner}>
-              Create burner wallet
+          <div style={{ position: "relative" }}>
+            <button
+              className="small primary"
+              onClick={() => setOpen((value) => !value)}
+              disabled={busy}
+            >
+              {busy ? "Connecting…" : "Connect wallet"}
             </button>
-            <button className="small ghost" onClick={() => setImporting((value) => !value)}>
-              Import key
-            </button>
-          </>
+
+            {open ? (
+              <div className="wallet-menu">
+                <div className="wm-title">Browser wallet</div>
+                {wallet.discovered.length ? (
+                  wallet.discovered.map((item) => (
+                    <button
+                      key={item.info.rdns ?? item.info.name}
+                      className="wm-item"
+                      disabled={busy}
+                      onClick={() => doConnect(item)}
+                    >
+                      {item.info.icon ? (
+                        <img src={item.info.icon} alt="" width={16} height={16} />
+                      ) : null}
+                      {item.info.name}
+                    </button>
+                  ))
+                ) : (
+                  <button className="wm-item" disabled={busy} onClick={() => doConnect()}>
+                    MetaMask / OKX / injected
+                  </button>
+                )}
+
+                <div className="wm-note">
+                  You will be asked to add and switch to {NET.chainName} (chain{" "}
+                  {CHAIN_HELP.chainIdDecimal}).{" "}
+                  <button className="linklike" onClick={() => setShowHelp((v) => !v)}>
+                    {showHelp ? "hide" : "how?"}
+                  </button>
+                </div>
+
+                {showHelp ? (
+                  <div className="wm-help">
+                    <div>
+                      <b>Network</b> {CHAIN_HELP.name}
+                    </div>
+                    <div>
+                      <b>Chain ID</b> {CHAIN_HELP.chainIdDecimal} ({CHAIN_HELP.chainIdHex})
+                    </div>
+                    <div style={{ wordBreak: "break-all" }}>
+                      <b>RPC</b> {CHAIN_HELP.rpc}
+                    </div>
+                    <div>
+                      <b>Currency</b> {CHAIN_HELP.currency}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         )}
       </div>
 
-      {importing && !wallet.hasWallet ? (
-        <div className="row">
-          <input
-            className="mono"
-            style={{ width: 300 }}
-            placeholder="0x… 64 hex characters"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button
-            className="small"
-            onClick={() => {
-              wallet.importKey(draft);
-              setDraft("");
-            }}
-          >
-            Use
-          </button>
-        </div>
-      ) : null}
-
-      {wallet.error ? <span className="help">{wallet.error}</span> : null}
+      {error ? <span className="help">{error}</span> : null}
 
       {phase !== "idle" ? (
         <div className="tx-strip">
@@ -138,7 +199,8 @@ export default function App() {
   const [pinnedTo, setPinnedTo] = useState<Pinned | null>(null);
 
   const wallet = useWallet();
-  const api = useGenLayer(wallet.account);
+  const api = useGenLayer(wallet);
+  const canWrite = api.canWrite;
 
   function pin(studyId: number, version: number) {
     if (!pinnedFrom) setPinnedFrom({ studyId, version });
@@ -152,9 +214,7 @@ export default function App() {
         <div className="masthead-inner">
           <div className="brand">
             <h1>MolfGraph</h1>
-            <span className="tagline">
-              on-chain replication graph for legal screening
-            </span>
+            <span className="tagline">on-chain replication graph for legal screening</span>
           </div>
           <WalletBar
             wallet={wallet}
@@ -190,14 +250,14 @@ export default function App() {
           </div>
         ) : null}
 
-        {tab === "screen" ? <ScreenTools api={api} hasWallet={wallet.hasWallet} /> : null}
+        {tab === "screen" ? <ScreenTools api={api} hasWallet={canWrite} /> : null}
         {tab === "studies" ? (
-          <StudyRegistry api={api} hasWallet={wallet.hasWallet} onPin={pin} />
+          <StudyRegistry api={api} hasWallet={canWrite} onPin={pin} />
         ) : null}
         {tab === "relations" ? (
           <RelationStudio
             api={api}
-            hasWallet={wallet.hasWallet}
+            hasWallet={canWrite}
             pinnedFrom={pinnedFrom}
             pinnedTo={pinnedTo}
             onPinFrom={setPinnedFrom}
@@ -208,9 +268,9 @@ export default function App() {
         {tab === "ledger" ? <Ledger api={api} /> : null}
         {tab === "receipts" ? <Receipts api={api} /> : null}
         {tab === "alerts" ? <Alerts api={api} /> : null}
-        {tab === "cases" ? <Cases api={api} hasWallet={wallet.hasWallet} /> : null}
+        {tab === "cases" ? <Cases api={api} hasWallet={canWrite} /> : null}
         {tab === "sources" ? (
-          <Sources api={api} hasWallet={wallet.hasWallet} walletAddress={wallet.address} />
+          <Sources api={api} hasWallet={canWrite} walletAddress={wallet.address ?? ""} />
         ) : null}
         {tab === "stats" ? <Stats api={api} /> : null}
       </main>
