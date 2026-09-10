@@ -250,6 +250,22 @@ MolfGraph pins its runner explicitly. The magic header at the top of
 Do not replace that hash with `:test`. The dual dependency is required because the contract
 uses `VecDB` with the sentence-transformer wrapper.
 
+### Deploying the console to Vercel
+
+Import the repository and set **Root Directory** to `frontend`. The Vite preset then supplies
+the correct install, build and output settings on its own, so leave the build overrides empty
+and do not add a `vercel.json`: a root-level one is applied on top of the root directory and
+resolves paths as `frontend/frontend`.
+
+Set one environment variable, since `frontend/.env` is gitignored and Vite inlines env vars at
+build time:
+
+```
+VITE_MOLFGRAPH_CONTRACT_ADDRESS=0x1ab5205a14716EfbC54085B4386876B217a8b2CC
+```
+
+Without it the build still succeeds and the site loads empty.
+
 ### Deploying to StudioNet
 
 The deploy signs its own transaction, so it needs a funded key. There are two routes.
