@@ -39,16 +39,20 @@ export function Sources({
     Boolean(stats.data?.owner) &&
     walletAddress.toLowerCase() === stats.data!.owner.toLowerCase();
 
-  async function mutate(fn: "add_trusted_source" | "remove_trusted_source", target: string) {
+  async function mutate(
+    fn: "add_trusted_source" | "remove_trusted_source",
+    target: string,
+    forCountry: string = country,
+  ) {
     setBusy(true);
     setError("");
     setMessage("");
     try {
-      await api.write(fn, [country, target]);
+      await api.write(fn, [forCountry, target]);
       setMessage(
         fn === "add_trusted_source"
-          ? `${target} is now a trusted origin for ${country}.`
-          : `${target} was retired for ${country}. Past analyses stay auditable.`,
+          ? `${target} is now a trusted origin for ${forCountry}.`
+          : `${target} was retired for ${forCountry}. Past analyses stay auditable.`,
       );
       setUrl("");
       registry.reload();
@@ -89,10 +93,7 @@ export function Sources({
                           className="small ghost"
                           style={{ marginLeft: 6 }}
                           disabled={busy}
-                          onClick={() => {
-                            setCountry(code);
-                            void mutate("remove_trusted_source", entry);
-                          }}
+                          onClick={() => void mutate("remove_trusted_source", entry, code)}
                         >
                           retire
                         </button>

@@ -10,7 +10,13 @@ import { CountrySelect, Empty, Field, Hash, Loading, Notice, Panel, Pill } from 
 
 const STATUSES = ["VERIFIED", "INSUFFICIENT_EVIDENCE", "UNAVAILABLE", "CONFLICT"];
 
-export function Ledger({ api }: { api: GenLayerApi }) {
+export function Ledger({
+  api,
+  onGoToScreen,
+}: {
+  api: GenLayerApi;
+  onGoToScreen?: () => void;
+}) {
   const [kind, setKind] = useState("");
   const [status, setStatus] = useState("");
   const [country, setCountry] = useState("");
@@ -64,7 +70,18 @@ export function Ledger({ api }: { api: GenLayerApi }) {
         {analyses.error ? <Notice tone="bad">{analyses.error}</Notice> : null}
 
         {!analyses.loading && !items.length ? (
-          <Empty>No analyses match those filters.</Empty>
+          <Empty>
+            <div style={{ marginBottom: 10 }}>
+              {kind || status || country
+                ? "No analyses match those filters."
+                : "This chain has no analyses yet."}
+            </div>
+            {onGoToScreen && !kind && !status && !country ? (
+              <button className="small primary" onClick={onGoToScreen}>
+                Run a screening tool
+              </button>
+            ) : null}
+          </Empty>
         ) : (
           <div className="scroll-x">
             <table>

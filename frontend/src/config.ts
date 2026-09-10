@@ -9,8 +9,16 @@ import { studionet } from "genlayer-js/chains";
 export const RPC_URL: string =
   import.meta.env.VITE_GENLAYER_RPC ?? "https://studio.genlayer.com/api";
 
+/**
+ * The deployed MolfGraph contract on StudioNet.
+ *
+ * The literal is the fallback so the hosted demo works even when the build
+ * environment has no variable set. Override it with
+ * VITE_MOLFGRAPH_CONTRACT_ADDRESS to point the console at your own deploy.
+ */
 export const CONTRACT_ADDRESS = (
-  import.meta.env.VITE_MOLFGRAPH_CONTRACT_ADDRESS ?? ""
+  import.meta.env.VITE_MOLFGRAPH_CONTRACT_ADDRESS ||
+  "0x1ab5205a14716EfbC54085B4386876B217a8b2CC"
 ).trim() as `0x${string}`;
 
 export const CHAIN_ID = studionet.id;
@@ -25,6 +33,9 @@ export const CHAIN = {
 };
 
 export const NETWORK_LABEL = "StudioNet";
+
+/** The network name genlayer-js expects from client.connect(). */
+export const NETWORK_KEY = "studionet" as const;
 
 /**
  * EVM `wallet_addEthereumChain` parameters for StudioNet, derived from the
@@ -55,7 +66,20 @@ export const CHAIN_HELP = {
   currency: NET.nativeCurrency.symbol,
 };
 
-export const EXPLORER_URL = "https://genlayer-explorer.vercel.app";
+export const EXPLORER_URL = "https://explorer-studio.genlayer.com";
+
+/** Where a visitor gets StudioNet GEN: the droplet on the account selector. */
+export const FAUCET_URL = "https://studio.genlayer.com";
+
+/** Link a finalized transaction on the StudioNet explorer. */
+export function explorerTx(hash: string): string {
+  return `${EXPLORER_URL}/tx/${hash}`;
+}
+
+/** Link an address on the StudioNet explorer. */
+export function explorerAddress(address: string): string {
+  return `${EXPLORER_URL}/address/${address}`;
+}
 
 export const DISCLAIMER =
   "Decision-support only — not legal advice. Professional review required.";

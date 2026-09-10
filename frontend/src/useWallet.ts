@@ -1,14 +1,17 @@
 /**
- * useWallet -- injected browser wallet connection for MolfGraph.
+ * useWallet -- two ways to sign MolfGraph writes on StudioNet.
  *
- * MolfGraph signs through the user's own wallet (MetaMask, OKX, or any
- * EIP-6963 wallet), switched onto the GenLayer chain. There is no in-browser
- * key handling: the app never sees a private key.
+ *  1. Local account: a key generated or imported in the browser, signed with by
+ *     genlayer-js. This is the demo path, so a visitor can try the console
+ *     without installing an extension. Testnet only.
+ *  2. Injected wallet: MetaMask, OKX, or any EIP-6963 wallet, switched onto the
+ *     GenLayer chain. MolfGraph never sees the key.
  *
- * Reads never touch this hook. Every MolfGraph view works without a wallet.
- * Only writes need a signer.
+ * The two are mutually exclusive at runtime. Reads never touch this hook: every
+ * MolfGraph view works with no wallet at all.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Account } from "genlayer-js/types";
 import {
   connect as walletConnect,
   disconnect as walletDisconnect,
@@ -20,20 +23,33 @@ import {
   type DiscoveredWallet,
   type WalletSnapshot,
 } from "./lib/wallet";
+import {
+  accountFromKey,
+  clearBurnerKey,
+  createBurnerKey,
+  isValidKey,
+  loadBurnerKey,
+  saveBurnerKey,
+  type Hex,
+} from "./lib/burner";
 
 export type { DiscoveredWallet } from "./lib/wallet";
+export type WalletMode = "local" | "external";
 
 export interface WalletState {
+  mode: WalletMode | null;
   address: string | null;
-  /** A wallet is connected. */
   connected: boolean;
-  /** Connected AND on the GenLayer chain. Writes require this. */
+  /** Connected AND on the GenLayer chain. A local account is always on it. */
   onChain: boolean;
-  /** Injected wallets discovered via EIP-6963. */
+  /** Present only in local mode; genlayer-js signs with this directly. */
+  account: Account | null;
   discovered: DiscoveredWallet[];
-  /** Any injected provider is present in this browser. */
   hasWallet: boolean;
-  connect: (detail?: DiscoveredWallet) => Promise<{ ok: boolean; error?: string }>;
+  connectExternal: (detail?: DiscoveredWallet) => Promise<{ ok: boolean; error?: string }>;
+  createLocal: () => { ok: boolean; error?: string };
+  importLocal: (key: string) => { ok: boolean; error?: string };
+  exportKey: () => string | null;
   disconnect: () => void;
 }
 
@@ -42,24 +58,52 @@ export function useWallet(): WalletState {
   const [discovered, setDiscovered] = useState<DiscoveredWallet[]>(() =>
     getDiscoveredWallets(),
   );
+  const [mode, setMode] = useState<WalletMode | null>(null);
+  const [localKey, setLocalKey] = useState<Hex | null>(null);
 
   useEffect(() => {
     const unsub = subscribe(setSnap);
-    // Wallets announce themselves asynchronously, so re-read shortly after mount.
     const timer = setTimeout(() => setDiscovered(getDiscoveredWallets()), 300);
-    void trySilentReconnect();
+    // An existing local account is an explicit prior choice, so restore it.
+    // Otherwise try to silently re-attach an injected wallet already authorised.
+    const existing = loadBurnerKey();
+    if (existing) {
+      setLocalKey(existing);
+      setMode("local");
+    } else {
+      void trySilentReconnect();
+    }
     return () => {
       unsub();
       clearTimeout(timer);
     };
   }, []);
 
-  const connect = useCallback(async (detail?: DiscoveredWallet) => {
+  useEffect(() => {
+    if (snap.address && mode !== "local") setMode("external");
+  }, [snap.address, mode]);
+
+  const account = useMemo<Account | null>(() => {
+    if (mode === "local" && localKey) {
+      try {
+        return accountFromKey(localKey);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }, [mode, localKey]);
+
+  const connectExternal = useCallback(async (detail?: DiscoveredWallet) => {
     try {
+      clearBurnerKey();
+      setLocalKey(null);
+      setMode("external");
       await walletConnect(detail);
       setDiscovered(getDiscoveredWallets());
       return { ok: true };
     } catch (e) {
+      setMode(null);
       return {
         ok: false,
         error: e instanceof Error ? e.message : "Wallet connection failed.",
@@ -67,20 +111,70 @@ export function useWallet(): WalletState {
     }
   }, []);
 
+  const createLocal = useCallback(() => {
+    try {
+      walletDisconnect();
+      const key = createBurnerKey();
+      setLocalKey(key);
+      setMode("local");
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "Could not create a local account.",
+      };
+    }
+  }, []);
+
+  const importLocal = useCallback((key: string) => {
+    const trimmed = key.trim();
+    if (!isValidKey(trimmed)) {
+      return { ok: false, error: "Expected a 0x-prefixed 64-hex-character key." };
+    }
+    try {
+      walletDisconnect();
+      saveBurnerKey(trimmed);
+      setLocalKey(trimmed);
+      setMode("local");
+      return { ok: true };
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? e.message : "Could not import that key.",
+      };
+    }
+  }, []);
+
+  const exportKey = useCallback(() => localKey, [localKey]);
+
   const disconnect = useCallback(() => {
     walletDisconnect();
+    clearBurnerKey();
+    setLocalKey(null);
+    setMode(null);
   }, []);
+
+  const address = mode === "local" ? (account?.address as string | undefined) ?? null : snap.address;
+  const onChain = mode === "local" ? true : snap.onChain;
 
   return useMemo(
     () => ({
-      address: snap.address,
-      connected: Boolean(snap.address),
-      onChain: snap.onChain,
+      mode,
+      address,
+      connected: mode !== null && Boolean(address),
+      onChain,
+      account,
       discovered,
       hasWallet: hasInjectedWallet(),
-      connect,
+      connectExternal,
+      createLocal,
+      importLocal,
+      exportKey,
       disconnect,
     }),
-    [snap.address, snap.onChain, discovered, connect, disconnect],
+    [
+      mode, address, onChain, account, discovered,
+      connectExternal, createLocal, importLocal, exportKey, disconnect,
+    ],
   );
 }

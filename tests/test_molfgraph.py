@@ -495,41 +495,58 @@ def test_search_studies_filters_by_country_and_text(contract):
 # ---------------------------------------------------------------------------
 
 
-def test_indexing_creates_context_not_edges(contract):
+def test_indexing_is_unavailable_and_says_so(contract):
+    """The deployed build ships without VecDB. The method must refuse honestly."""
     register_us_study(contract)
-    indexed = json.loads(contract.index_study_records(1, 1))
-    assert indexed["indexed_record_ids"] == ["1:1:0"]
-    assert "never create edges" in indexed["note"]
-
-    neighbours = json.loads(contract.similar_records("reuse of another person's credentials", 5))
-    assert neighbours["context_only"] is True
-    assert neighbours["items"][0]["study_id"] == 1
-    assert neighbours["items"][0]["record_type"] == "CRIME"
-
-    assert json.loads(contract.get_stats())["total_edges"] == 0
-    assert json.loads(contract.list_edges(0, 25))["total"] == 0
-
-
-def test_correction_keeps_historical_vectors(contract):
-    register_us_study(contract)
-    contract.index_study_records(1, 1)
-    contract.correct_study(
-        1, "Refined the record.", "Unauthorised access screening", "US", "matter-alpha",
-        "Unauthorised computer access", "q", "m", "c",
-        records("CRIME", "Remote reuse of another person's credentials, refined."),
-    )
-    contract.index_study_records(1, 2)
-    found = json.loads(contract.similar_records("remote reuse credentials", 5))
-    assert {item["version"] for item in found["items"]} == {1, 2}
-
-
-def test_indexing_unknown_version_fails(contract):
-    with pytest.raises(Exception, match="unknown study version"):
+    with pytest.raises(Exception, match="VecDB indexing is unavailable"):
         contract.index_study_records(1, 1)
+    # Refusing must not have written anything.
+    assert json.loads(contract.get_stats())["total_edges"] == 0
 
 
-def test_similar_records_on_empty_index_is_empty(contract):
-    assert json.loads(contract.similar_records("anything", 5))["items"] == []
+def test_similar_records_returns_a_labelled_empty_payload(contract):
+    register_us_study(contract)
+    found = json.loads(contract.similar_records("credential reuse", 5))
+    assert found["items"] == []
+    assert found["context_only"] is True
+    assert "unavailable in this deployment" in found["note"]
+    assert found["disclaimer"] == contract.get_disclaimer()
+
+
+def test_similar_records_never_creates_edges(contract):
+    register_us_study(contract)
+    contract.similar_records("anything at all", 5)
+    assert json.loads(contract.list_edges(0, 25))["total"] == 0
+    assert json.loads(contract.get_graph(25))["edges"] == []
+
+
+def test_records_reject_malformed_expected_sha256(contract):
+    """An empty or short digest must not be accepted as a pin."""
+    with pytest.raises(Exception, match="64 hex chars"):
+        contract.register_study_version(
+            "T", "US", "ref", "charge", "q", "m", "c",
+            json.dumps([{
+                "record_type": "CRIME",
+                "text": "text",
+                "source_uris": [US_SOURCE],
+                "expected_sha256": ["not-a-digest"],
+            }]),
+        )
+
+
+def test_evidence_requires_a_real_digest(contract):
+    """An empty or malformed digest can never pass verification, so it is refused."""
+    for bad in ("", "abc", "z" * 64, "0" * 63):
+        with pytest.raises(Exception, match="64 lowercase hex"):
+            contract.register_evidence("rec-x", US_SOURCE, bad, 1, "", "", "")
+
+
+def test_evidence_digest_is_case_normalised(contract):
+    """An uppercase digest is accepted and stored lowercase, not rejected."""
+    stored = json.loads(contract.register_evidence(
+        "rec-upper", US_SOURCE, digest("a").upper(), 1, "", "", ""
+    ))
+    assert stored["expected_sha256"] == digest("a")
 
 
 # ---------------------------------------------------------------------------

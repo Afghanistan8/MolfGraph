@@ -754,3 +754,295 @@ tbody tr:hover {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* ===========================================================================
+   Visual refinement pass. Depth, rhythm and focus, without changing layout.
+   =========================================================================== */
+
+:root {
+  --radius: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --ring: 0 0 0 3px rgba(14, 165, 233, 0.16);
+}
+
+body {
+  background:
+    radial-gradient(1200px 640px at 12% -12%, #0e1a2b 0%, transparent 62%),
+    radial-gradient(900px 520px at 92% -4%, #0b1c26 0%, transparent 58%),
+    radial-gradient(700px 700px at 50% 110%, #0a1420 0%, transparent 60%),
+    var(--ink-000);
+}
+
+/* Masthead gets a hairline of colour so the instrument feels calibrated. */
+.masthead {
+  border-bottom-color: transparent;
+  box-shadow:
+    inset 0 -1px 0 var(--line),
+    0 1px 0 rgba(125, 211, 252, 0.06);
+}
+
+.brand h1 {
+  background: linear-gradient(180deg, #f2f7ff 0%, #9fc6e8 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brand h1::after {
+  content: "";
+  display: block;
+  height: 2px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent-deep), transparent);
+  opacity: 0.75;
+}
+
+/* Panels: soft elevation and a top highlight, so cards read as surfaces. */
+.panel {
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.22), transparent);
+  pointer-events: none;
+}
+
+.panel-head {
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.035), transparent);
+}
+
+.panel-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.panel-head h2::before {
+  content: "";
+  width: 3px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--accent-deep);
+  opacity: 0.85;
+}
+
+/* Cards lift slightly on hover so lists feel navigable. */
+.card {
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.card.selectable:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.card.selected {
+  background: linear-gradient(180deg, rgba(125, 211, 252, 0.07), var(--ink-100));
+}
+
+/* Buttons: clearer affordance and a real focus ring. */
+button {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: 8px;
+}
+
+button.primary {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, var(--shadow-sm);
+}
+
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #0d5f80, #084761);
+}
+
+button.warn-btn {
+  border-color: rgba(251, 191, 36, 0.5);
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--ink-200);
+  text-decoration: none;
+}
+
+.btn-link:hover {
+  border-color: var(--accent-deep);
+  text-decoration: none;
+}
+
+.badge-link {
+  text-decoration: none;
+  color: var(--text-dim);
+}
+
+.badge-link:hover {
+  border-color: var(--accent-deep);
+  text-decoration: none;
+}
+
+/* Tabs: an underline that tracks the active panel. */
+.tab {
+  position: relative;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.tab[aria-selected="true"] {
+  box-shadow: none;
+}
+
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+}
+
+/* Tables read better with a sticky header and zebra separation. */
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--ink-050);
+  z-index: 1;
+}
+
+tbody tr {
+  transition: background 120ms ease;
+}
+
+/* Stat tiles get a subtle gradient so numbers carry weight. */
+.stat {
+  background: linear-gradient(180deg, var(--ink-200), var(--ink-100));
+  position: relative;
+  overflow: hidden;
+}
+
+.stat::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent-deep), transparent);
+  opacity: 0.6;
+}
+
+.stat .value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Empty states become a call to action rather than a dead box. */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 34px 22px;
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(125, 211, 252, 0.02) 0 10px,
+      transparent 10px 20px
+    );
+}
+
+/* The disclaimer must stay legible without shouting. */
+.disclaimer-bar {
+  font-weight: 500;
+}
+
+/* Graph canvas depth. */
+.graph-wrap {
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.55);
+}
+
+.graph-node circle {
+  transition: stroke-width 120ms ease, filter 120ms ease;
+}
+
+.graph-node:hover circle {
+  filter: drop-shadow(0 0 6px rgba(125, 211, 252, 0.45));
+}
+
+/* Footer metadata row. */
+.footer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+  font-size: 11.5px;
+  font-family: var(--mono);
+  color: var(--text-faint);
+}
+
+.footer-meta b {
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-right: 5px;
+}
+
+.footer-err {
+  color: var(--bad);
+}
+
+.wallet-err {
+  max-width: 340px;
+  text-align: right;
+  color: var(--bad);
+}
+
+.wm-divider {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 10px 0;
+}
+
+.wm-import {
+  display: flex;
+  gap: 6px;
+}
+
+.wm-import input {
+  font-size: 11.5px;
+}
+
+.wm-err {
+  margin-top: 8px;
+  color: var(--bad);
+  font-size: 11.5px;
+}
+
+/* Respect users who would rather not have motion. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

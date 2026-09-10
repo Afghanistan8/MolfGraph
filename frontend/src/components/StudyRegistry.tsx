@@ -126,11 +126,8 @@ export function StudyRegistry({
     }));
   }
 
-  function loadSample(index: number) {
-    const sample = samples?.studies[index];
-    if (!sample) return;
-    setMode("register");
-    setDraft({
+  function draftFromSample(sample: NonNullable<SampleData["studies"]>[number]): Draft {
+    return {
       title: sample.title,
       country: sample.country,
       subject_ref: sample.subject_ref,
@@ -145,7 +142,55 @@ export function StudyRegistry({
         source_uris: record.source_uris.join("\n"),
         expected_sha256: record.expected_sha256.join("\n"),
       })),
-    });
+    };
+  }
+
+  /** Register every sample study in order and report the pins they landed on. */
+  async function registerSamplePack() {
+    if (!samples?.studies.length) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    const pins: string[] = [];
+    try {
+      for (const sample of samples.studies) {
+        const draft = draftFromSample(sample);
+        const outcome = await api.write<{ study_id: number; version: number }>(
+          "register_study_version",
+          [
+            draft.title,
+            draft.country,
+            draft.subject_ref,
+            draft.crime_or_charge,
+            draft.question,
+            draft.method,
+            draft.conclusion,
+            encodeRecords(draft.records),
+          ],
+        );
+        if (!outcome.finalized) throw new Error(`${sample.title} did not finalise.`);
+        const pin = outcome.value
+          ? `${outcome.value.study_id}:${outcome.value.version}`
+          : "registered";
+        pins.push(`${sample.country} ${pin}`);
+      }
+      setMessage(`Sample pack registered. Pins: ${pins.join(", ")}. Open Relations to claim between them.`);
+      studies.reload();
+    } catch (cause) {
+      setError(
+        (cause instanceof Error ? cause.message : String(cause)) +
+          (pins.length ? ` Registered before failing: ${pins.join(", ")}.` : ""),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function loadSample(index: number) {
+    const sample = samples?.studies[index];
+    if (!sample) return;
+    setMode("register");
+    setDraft(draftFromSample(sample));
   }
 
   async function submit() {
@@ -190,19 +235,6 @@ export function StudyRegistry({
     }
   }
 
-  async function indexRecords(studyId: number, version: number) {
-    setError("");
-    setMessage("");
-    try {
-      await api.write("index_study_records", [studyId, version]);
-      setMessage(
-        `Records for study ${studyId} v${version} indexed into VecDB as retrieval context. No edges were created.`,
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }
-
   const disabled =
     busy ||
     !hasWallet ||
@@ -227,6 +259,18 @@ export function StudyRegistry({
                   {sample.country} · {sample.title.slice(0, 26)}
                 </button>
               ))}
+              <button
+                className="small primary"
+                disabled={busy || !hasWallet}
+                onClick={registerSamplePack}
+                title={
+                  hasWallet
+                    ? "Register all sample studies in order"
+                    : "Connect a funded wallet first"
+                }
+              >
+                Register sample pack
+              </button>
             </>
           ) : null
         }
@@ -493,18 +537,17 @@ export function StudyRegistry({
                 </dl>
                 <div className="row" style={{ marginTop: 10 }}>
                   <button
-                    className="small"
-                    disabled={!hasWallet}
-                    onClick={() => indexRecords(version.study_id, version.version)}
-                  >
-                    Index records into VecDB
-                  </button>
-                  <button
                     className="small ghost"
                     onClick={() => onPin(version.study_id, version.version)}
                   >
                     Pin for a relation claim
                   </button>
+                  <span
+                    className="help"
+                    title="This deployment ships without the VecDB retrieval layer."
+                  >
+                    Semantic indexing unavailable on this deployment
+                  </span>
                 </div>
               </div>
             ))}

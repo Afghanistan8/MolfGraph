@@ -1,16 +1,8 @@
 import { useState } from "react";
-import {
-  CHAIN_HELP,
-  CHAIN_ID,
-  CONTRACT_ADDRESS,
-  DISCLAIMER,
-  NET,
-  NETWORK_LABEL,
-  RPC_URL,
-} from "./config";
-import { useWallet, type DiscoveredWallet, type WalletState } from "./useWallet";
-import { useGenLayer } from "./useGenLayer";
-import { shortAddress, switchNetwork } from "./lib/wallet";
+import { CONTRACT_ADDRESS, DISCLAIMER, RPC_URL, explorerAddress } from "./config";
+import { useWallet } from "./useWallet";
+import { useGenLayer, useAsyncView } from "./useGenLayer";
+import { WalletBar } from "./components/WalletBar";
 import { Alerts } from "./components/Alerts";
 import { Cases } from "./components/Cases";
 import { Ledger } from "./components/Ledger";
@@ -21,7 +13,7 @@ import { ScreenTools } from "./components/ScreenTools";
 import { Sources } from "./components/Sources";
 import { Stats } from "./components/Stats";
 import { StudyRegistry } from "./components/StudyRegistry";
-import { Notice } from "./components/ui";
+import { Hash, Notice } from "./components/ui";
 
 type TabId =
   | "screen"
@@ -48,151 +40,6 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: "stats", label: "Stats" },
 ];
 
-/**
- * Wallet controls: connect an injected browser wallet (MetaMask, OKX, or any
- * EIP-6963 wallet), with a wrong-network guard and manual chain-add details.
- */
-function WalletBar({
-  wallet,
-  phase,
-  hash,
-  message,
-}: {
-  wallet: WalletState;
-  phase: string;
-  hash?: string;
-  message?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function doConnect(detail?: DiscoveredWallet) {
-    setError("");
-    setBusy(true);
-    const result = await wallet.connect(detail);
-    setBusy(false);
-    if (!result.ok) setError(result.error ?? "Wallet connection failed.");
-    else setOpen(false);
-  }
-
-  async function doSwitch() {
-    setError("");
-    setBusy(true);
-    try {
-      await switchNetwork();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Switch failed.");
-    }
-    setBusy(false);
-  }
-
-  return (
-    <div className="wallet">
-      <div className="row">
-        <span className="badge">
-          <i className="dot" />
-          {NETWORK_LABEL} · chain {CHAIN_ID}
-        </span>
-
-        {wallet.connected ? (
-          <>
-            {!wallet.onChain ? (
-              <button
-                className="small"
-                onClick={doSwitch}
-                disabled={busy}
-                title={`Switch to ${NET.chainName}`}
-              >
-                Switch network
-              </button>
-            ) : null}
-            <span className="badge" title={wallet.address ?? ""}>
-              {wallet.onChain ? "Connected" : "Wrong network"}{" "}
-              {shortAddress(wallet.address)}
-            </span>
-            <button className="small ghost" onClick={wallet.disconnect}>
-              Disconnect
-            </button>
-          </>
-        ) : (
-          <div style={{ position: "relative" }}>
-            <button
-              className="small primary"
-              onClick={() => setOpen((value) => !value)}
-              disabled={busy}
-            >
-              {busy ? "Connecting…" : "Connect wallet"}
-            </button>
-
-            {open ? (
-              <div className="wallet-menu">
-                <div className="wm-title">Browser wallet</div>
-                {wallet.discovered.length ? (
-                  wallet.discovered.map((item) => (
-                    <button
-                      key={item.info.rdns ?? item.info.name}
-                      className="wm-item"
-                      disabled={busy}
-                      onClick={() => doConnect(item)}
-                    >
-                      {item.info.icon ? (
-                        <img src={item.info.icon} alt="" width={16} height={16} />
-                      ) : null}
-                      {item.info.name}
-                    </button>
-                  ))
-                ) : (
-                  <button className="wm-item" disabled={busy} onClick={() => doConnect()}>
-                    MetaMask / OKX / injected
-                  </button>
-                )}
-
-                <div className="wm-note">
-                  You will be asked to add and switch to {NET.chainName} (chain{" "}
-                  {CHAIN_HELP.chainIdDecimal}).{" "}
-                  <button className="linklike" onClick={() => setShowHelp((v) => !v)}>
-                    {showHelp ? "hide" : "how?"}
-                  </button>
-                </div>
-
-                {showHelp ? (
-                  <div className="wm-help">
-                    <div>
-                      <b>Network</b> {CHAIN_HELP.name}
-                    </div>
-                    <div>
-                      <b>Chain ID</b> {CHAIN_HELP.chainIdDecimal} ({CHAIN_HELP.chainIdHex})
-                    </div>
-                    <div style={{ wordBreak: "break-all" }}>
-                      <b>RPC</b> {CHAIN_HELP.rpc}
-                    </div>
-                    <div>
-                      <b>Currency</b> {CHAIN_HELP.currency}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-
-      {error ? <span className="help">{error}</span> : null}
-
-      {phase !== "idle" ? (
-        <div className="tx-strip">
-          <i className={`tx-dot ${phase}`} />
-          <span>{phase}</span>
-          {hash ? <span title={hash}>{shortAddress(hash)}</span> : null}
-          {message ? <span>· {message}</span> : null}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function App() {
   const [tab, setTab] = useState<TabId>("screen");
   const [pinnedFrom, setPinnedFrom] = useState<Pinned | null>(null);
@@ -201,6 +48,9 @@ export default function App() {
   const wallet = useWallet();
   const api = useGenLayer(wallet);
   const canWrite = api.canWrite;
+
+  // Surfaced in the footer so a broken deployment is visible rather than silent.
+  const owner = useAsyncView<string>(api, () => api.read<string>("get_owner", []), []);
 
   function pin(studyId: number, version: number) {
     if (!pinnedFrom) setPinnedFrom({ studyId, version });
@@ -264,8 +114,12 @@ export default function App() {
             onPinTo={setPinnedTo}
           />
         ) : null}
-        {tab === "graph" ? <LiveGraph api={api} /> : null}
-        {tab === "ledger" ? <Ledger api={api} /> : null}
+        {tab === "graph" ? (
+          <LiveGraph api={api} onGoToStudies={() => setTab("studies")} />
+        ) : null}
+        {tab === "ledger" ? (
+          <Ledger api={api} onGoToScreen={() => setTab("screen")} />
+        ) : null}
         {tab === "receipts" ? <Receipts api={api} /> : null}
         {tab === "alerts" ? <Alerts api={api} /> : null}
         {tab === "cases" ? <Cases api={api} hasWallet={canWrite} /> : null}
@@ -282,9 +136,30 @@ export default function App() {
           outcomes. Every output is verified reference information grounded in public sources and
           requires professional review.
         </p>
-        <p className="mono" style={{ margin: 0, fontSize: 11 }}>
-          {CONTRACT_ADDRESS || "no contract configured"} · {RPC_URL}
-        </p>
+        <div className="footer-meta">
+          <span>
+            <b>Contract</b>{" "}
+            <a
+              href={explorerAddress(CONTRACT_ADDRESS)}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mono"
+            >
+              {CONTRACT_ADDRESS || "not configured"}
+            </a>
+          </span>
+          <span>
+            <b>Owner</b>{" "}
+            {owner.error ? (
+              <span className="footer-err">read failed: {owner.error.slice(0, 80)}</span>
+            ) : owner.data ? (
+              <Hash value={owner.data} />
+            ) : (
+              <span className="mono">reading…</span>
+            )}
+          </span>
+          <span className="mono">{RPC_URL}</span>
+        </div>
       </footer>
     </div>
   );

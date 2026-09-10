@@ -296,15 +296,28 @@ export interface SampleStudy {
   }>;
 }
 
+export interface SampleEvidence {
+  stable_record_id: string;
+  source_uri: string;
+  expected_sha256: string;
+  version: number;
+  issued_at: string;
+  record_type: RecordType | "";
+  measured_bytes?: number;
+}
+
 export interface SampleRelation {
-  from_title: string;
-  to_title: string;
+  from_index: number;
+  to_index: number;
   claimed_relation: RelationType;
+  evidence_stable_ids: string[];
   rationale: string;
 }
 
 export interface SampleData {
   disclaimer: string;
+  digest_note?: string;
+  evidence: SampleEvidence[];
   studies: SampleStudy[];
   proposed_relations: SampleRelation[];
 }

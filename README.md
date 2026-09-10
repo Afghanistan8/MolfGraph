@@ -23,11 +23,54 @@ MolfGraph is deployed on GenLayer StudioNet.
 | Network | StudioNet, chain `61999` |
 | Owner | `0x4184bc5E5444F250767E8D33A49817A9B4FB0df3` |
 
-The deployed build is [contracts/molfgraph_deployable.py](contracts/molfgraph_deployable.py).
-It is the canonical contract with the VecDB retrieval layer removed, because the dual `Seq`
-magic header that VecDB requires is rejected by the GenVM on both StudioNet and Bradbury.
-`index_study_records` raises a clear unavailable error and `similar_records` returns an empty,
-explicitly labelled result rather than pretending to work. Everything else is intact.
+[contracts/molfgraph.py](contracts/molfgraph.py) is the canonical source and is
+**byte-identical to what is live** at that address. I verified this by fetching the deployed
+source over `gen_getContractCode` and comparing SHA-256, not by assuming.
+
+It ships without the VecDB retrieval layer, because the dual `Seq` magic header that
+`genlayermodelwrappers` requires is rejected by the GenVM on both StudioNet and Bradbury.
+`index_study_records` raises a clear unavailable error, `similar_records` returns an empty
+explicitly labelled result, and the console shows no Index button at all rather than one that
+always reverts. Everything else is intact.
+
+[contracts/molfgraph_vecdb.py](contracts/molfgraph_vecdb.py) keeps the VecDB variant for the
+day a runtime accepts that header. It is **not deployable today** and is covered by its own
+opt-in test module so it cannot give false confidence.
+
+### A fresh deploy starts empty
+
+Nothing is pre-seeded. A new deployment has no studies, no analyses, no edges and no receipts,
+so the graph, ledger and receipts panels are legitimately blank until someone writes. Use
+**Register sample pack** on the Studies tab to put the three sample studies on chain, then
+claim a relation between them on Relations.
+
+### SDK pinning, and why
+
+`genlayer-js` is held at **1.x on purpose**. The `2.0.0-rc.1` release candidate encodes
+calldata in a newer wire format:
+
+```
+1.x (works here)   0xd4920e06 6d6574686f64 4c 6765745f6f776e6572 00   {"method": "get_owner"}
+2.0.0-rc.1         0xce8c0e00 4c 6765745f6f776e6572 00               no method key
+```
+
+The deployed StudioNet node rejects the newer form with `execution failed`, which breaks every
+read. The write path in `frontend/src/useGenLayer.ts` calls
+`estimateTransactionFeesForWrite` and `waitForFinalization` **when the SDK exposes them** and
+falls back to `waitForTransactionReceipt({ status: "FINALIZED" })` otherwise, so moving to 2.x
+once StudioNet updates needs only a version bump.
+
+Either way a write is only believed when the transaction finalises **and** its execution
+result is a success. An ACCEPTED-but-reverted transaction never becomes an edge or a ledger
+entry.
+
+### Evidence digests are digests of rendered text
+
+`expected_sha256` must be the SHA-256 of what `gl.nondet.web.render(url, mode="text")`
+returns, **not** of the raw HTTP body. Hashing the page yourself with curl will not match. The
+digests in `frontend/public/sample_studies.json` were measured on StudioNet. When a publisher
+edits a page the digest changes, adjudication returns `REPAIR_REQUIRED` with the digest the
+validators actually observed, and the Relations panel pre-fills `repair_evidence` with it.
 
 To point the console at it, copy `frontend/.env.example` to `frontend/.env` and set
 `VITE_MOLFGRAPH_CONTRACT_ADDRESS` to the address above.

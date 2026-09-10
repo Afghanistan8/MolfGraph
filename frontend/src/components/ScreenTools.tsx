@@ -149,7 +149,15 @@ export function ScreenTools({ api, hasWallet }: { api: GenLayerApi; hasWallet: b
         const field = tool.fields.find((item) => item.name === name);
         const raw = values[name] ?? "";
         if (field?.kind === "urls") return encodeUrls(raw);
-        if (field?.kind === "number") return Number(raw || 0);
+        if (field?.kind === "number") {
+          // The ABI takes u256. Never send a float, an empty string, or 0 for
+          // an id the contract will reject anyway.
+          const parsed = Math.trunc(Number(raw));
+          if (!Number.isFinite(parsed) || parsed < 1) {
+            throw new Error(`${field.label} must be a whole number of at least 1.`);
+          }
+          return parsed;
+        }
         return raw;
       });
       const outcome = await api.write<AnalysisResult>(tool.functionName, args);

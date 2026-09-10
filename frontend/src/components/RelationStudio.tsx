@@ -44,6 +44,8 @@ export function RelationStudio({
   const [evidenceVersion, setEvidenceVersion] = useState("1");
   const [issuedAt, setIssuedAt] = useState("");
   const [evidenceMode, setEvidenceMode] = useState<"register" | "repair">("register");
+  const [activeClaim, setActiveClaim] = useState<number>(0);
+  const [outcome, setOutcome] = useState<RelationClaim | null>(null);
 
   const studies = useAsyncView<Page<StudySummary>>(
     api,
@@ -117,15 +119,22 @@ export function RelationStudio({
     setError("");
     setMessage("");
     try {
-      await api.write("propose_relation", [
-        pinnedFrom.studyId,
-        pinnedFrom.version,
-        pinnedTo.studyId,
-        pinnedTo.version,
+      const written = await api.write<RelationClaim>("propose_relation", [
+        Math.trunc(pinnedFrom.studyId),
+        Math.trunc(pinnedFrom.version),
+        Math.trunc(pinnedTo.studyId),
+        Math.trunc(pinnedTo.version),
         relation,
-        JSON.stringify(selectedEvidence),
+        JSON.stringify(selectedEvidence.map((id) => Math.trunc(id))),
       ]);
-      setMessage("Claim opened. It stays PENDING and draws nothing on the graph until adjudicated.");
+      const claimId = written.value?.claim_id ?? 0;
+      if (claimId) setActiveClaim(claimId);
+      setOutcome(null);
+      setMessage(
+        claimId
+          ? `Claim #${claimId} opened and selected. It stays PENDING and draws nothing on the graph until adjudicated.`
+          : "Claim opened. It stays PENDING and draws nothing on the graph until adjudicated.",
+      );
       claims.reload();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -138,16 +147,57 @@ export function RelationStudio({
     setBusy(true);
     setError("");
     setMessage("");
+    setActiveClaim(claimId);
     try {
-      const outcome = await api.write<{ edge_id: number }>("adjudicate_relation", [claimId]);
-      if (!outcome.finalized) {
+      const written = await api.write<{ claim?: RelationClaim; edge_id: number }>(
+        "adjudicate_relation",
+        [Math.trunc(claimId)],
+      );
+      if (!written.finalized) {
         setError("Adjudication did not finalise. No edge was created.");
-      } else {
-        setMessage(
-          "Adjudicated. Open the claim below to read the consensus decision and its source-set digest.",
+        claims.reload();
+        return;
+      }
+
+      // Re-read rather than trust the return shape, then say exactly what happened.
+      const settled = await api.read<RelationClaim>("get_claim", [Math.trunc(claimId)]);
+      setOutcome(settled);
+      const decision = settled?.decision;
+
+      if (settled?.status === "REPAIR_REQUIRED" && decision) {
+        const failed = (evidence.data?.items ?? []).find(
+          (item) => item.evidence_id === decision.failed_evidence_id,
         );
+        if (failed) {
+          // Hand the reader straight into the repair, pre-filled with the
+          // digest the validators actually observed.
+          setEvidenceMode("repair");
+          setStableId(failed.stable_record_id);
+          setSourceUri(failed.source_uri);
+          setExpectedSha(decision.observed_sha256 ?? "");
+          setEvidenceVersion(String(failed.version + 1));
+        }
+        setError(
+          `Evidence verification failed (${decision.failure_code}) on evidence #${decision.failed_evidence_id}. ` +
+            `No edge was created. The repair form is pre-filled with the observed digest.`,
+        );
+      } else if (settled?.status === "REJECTED_AS_INSUFFICIENT") {
+        setMessage(
+          "Consensus returned INSUFFICIENT, so no edge was created. The decision is stored " +
+            "in the claim ledger below for audit.",
+        );
+      } else if (settled?.status === "DUPLICATE") {
+        setMessage("Those endpoints already carry that relation, so no second edge was created.");
+      } else if (settled?.status === "ACCEPTED") {
+        setMessage(
+          `Accepted. Edge #${settled.edge_id ?? written.value?.edge_id ?? "?"} is now on the Live graph, ` +
+            "and a provenance receipt was written.",
+        );
+      } else {
+        setMessage("Adjudicated. Open the claim below to read the consensus decision.");
       }
       claims.reload();
+      evidence.reload();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -350,6 +400,49 @@ export function RelationStudio({
                 <Notice tone="bad">{error}</Notice>
               </div>
             ) : null}
+
+            {outcome?.decision ? (
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <h3>Claim #{outcome.claim_id} decision</h3>
+                  <Pill value={outcome.status} />
+                </div>
+                <dl className="kv" style={{ marginTop: 8 }}>
+                  <dt>Consensus</dt>
+                  <dd>
+                    <Pill value={outcome.decision.relation_type} />
+                  </dd>
+                  <dt>Evidence</dt>
+                  <dd>
+                    {outcome.decision.evidence_pass
+                      ? "every digest matched"
+                      : `verification failed: ${outcome.decision.failure_code || "unknown"}`}
+                  </dd>
+                  {outcome.decision.observed_sha256 ? (
+                    <>
+                      <dt>Observed</dt>
+                      <dd>
+                        <Hash value={outcome.decision.observed_sha256} />
+                      </dd>
+                    </>
+                  ) : null}
+                  {outcome.decision.source_set_sha256 ? (
+                    <>
+                      <dt>Source set</dt>
+                      <dd>
+                        <Hash value={outcome.decision.source_set_sha256} />
+                      </dd>
+                    </>
+                  ) : null}
+                  {outcome.decision.rationale ? (
+                    <>
+                      <dt>Rationale</dt>
+                      <dd>{outcome.decision.rationale}</dd>
+                    </>
+                  ) : null}
+                </dl>
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -362,7 +455,10 @@ export function RelationStudio({
                 .slice()
                 .reverse()
                 .map((claim) => (
-                  <div className="card" key={claim.claim_id}>
+                  <div
+                    className={`card ${activeClaim === claim.claim_id ? "selected" : ""}`}
+                    key={claim.claim_id}
+                  >
                     <div className="row" style={{ justifyContent: "space-between" }}>
                       <h3>
                         Claim #{claim.claim_id} ·{" "}

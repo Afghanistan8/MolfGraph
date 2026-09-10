@@ -13,6 +13,11 @@ the command line, and is never written anywhere.
     #    Put it in .env at the repo root, which is gitignored.
     GENLAYER_PRIVATE_KEY=0x<64 hex characters>
 
+It deploys ``contracts/molfgraph.py``, which is the canonical source and is
+byte-identical to what is live on StudioNet. The VecDB variant in
+``contracts/molfgraph_vecdb.py`` is NOT deployable: the dual ``Seq`` magic
+header it needs is rejected by the GenVM.
+
 On success the script prints the deployed address, writes it into
 ``frontend/.env``, and reads three views back off the chain to prove the
 contract is live.

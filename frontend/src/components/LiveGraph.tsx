@@ -40,12 +40,19 @@ function place(nodes: GraphNode[]): Placed[] {
   });
 }
 
-export function LiveGraph({ api }: { api: GenLayerApi }) {
+export function LiveGraph({
+  api,
+  onGoToStudies,
+}: {
+  api: GenLayerApi;
+  onGoToStudies?: () => void;
+}) {
   const [selectedNode, setSelectedNode] = useState<string>("");
   const [selectedEdge, setSelectedEdge] = useState<number>(0);
   const [query, setQuery] = useState("");
   const [neighbours, setNeighbours] = useState<NeighborRecord[] | null>(null);
   const [neighbourError, setNeighbourError] = useState("");
+  const [neighbourNote, setNeighbourNote] = useState("");
 
   const graph = useAsyncView<Graph>(
     api,
@@ -101,12 +108,17 @@ export function LiveGraph({ api }: { api: GenLayerApi }) {
   async function findNeighbours() {
     setNeighbourError("");
     setNeighbours(null);
+    setNeighbourNote("");
     try {
-      const found = await api.read<{ items: NeighborRecord[] }>("similar_records", [
-        query,
-        LIMITS.MAX_KNN,
-      ]);
+      const found = await api.read<{ items: NeighborRecord[]; note?: string }>(
+        "similar_records",
+        [query, LIMITS.MAX_KNN],
+      );
       setNeighbours(found.items ?? []);
+      // The contract says when retrieval is unavailable. Repeat it verbatim
+      // rather than implying the query simply matched nothing.
+      setNeighbourNote(found.note ?? "");
+      setNeighbourError("");
     } catch (cause) {
       setNeighbourError(cause instanceof Error ? cause.message : String(cause));
     }
@@ -123,7 +135,16 @@ export function LiveGraph({ api }: { api: GenLayerApi }) {
         {graph.error ? <Notice tone="bad">{graph.error}</Notice> : null}
 
         {!graph.loading && !nodes.length ? (
-          <Empty>No study versions on the graph yet. Register one in Studies.</Empty>
+          <Empty>
+            <div style={{ marginBottom: 10 }}>
+              This chain has no studies yet, so there is nothing to draw.
+            </div>
+            {onGoToStudies ? (
+              <button className="small primary" onClick={onGoToStudies}>
+                Go to Studies and register one
+              </button>
+            ) : null}
+          </Empty>
         ) : (
           <div className="graph-wrap">
             <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="MolfGraph replication graph">
@@ -396,7 +417,10 @@ export function LiveGraph({ api }: { api: GenLayerApi }) {
 
           {neighbourError ? <Notice tone="bad">{neighbourError}</Notice> : null}
           {neighbours && !neighbours.length ? (
-            <p className="meta">Nothing indexed matches that query.</p>
+            <Notice tone="warn">
+              {neighbourNote ||
+                "Semantic retrieval returned nothing for that query on this deployment."}
+            </Notice>
           ) : null}
           {neighbours?.length ? (
             <div className="scroll-x">
