@@ -41,7 +41,9 @@ const TABS: Array<{ id: TabId; label: string }> = [
 ];
 
 export default function App() {
-  const [tab, setTab] = useState<TabId>("screen");
+  // Land on the graph: the public site should show the accepted edge and its
+  // nodes immediately, without asking a first-time visitor to hunt for a tab.
+  const [tab, setTab] = useState<TabId>("graph");
   const [pinnedFrom, setPinnedFrom] = useState<Pinned | null>(null);
   const [pinnedTo, setPinnedTo] = useState<Pinned | null>(null);
 

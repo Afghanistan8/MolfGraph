@@ -459,6 +459,28 @@ export function RelationStudio({
             <div className="meta" style={{ marginBottom: 6 }}>
               CLAIM LEDGER
             </div>
+            {(() => {
+              // Every claim is listed, settled or not. A claim that produced no
+              // edge is part of the record, not something to hide.
+              const all = claims.data?.items ?? [];
+              if (!all.length) return null;
+              const tally = all.reduce<Record<string, number>>((acc, item) => {
+                const key = item.status ?? "UNKNOWN";
+                acc[key] = (acc[key] ?? 0) + 1;
+                return acc;
+              }, {});
+              return (
+                <div className="row" style={{ gap: 6, marginBottom: 10 }}>
+                  <span className="meta">{all.length} total</span>
+                  {Object.entries(tally).map(([status, count]) => (
+                    <span key={status} className="row" style={{ gap: 4 }}>
+                      <Pill value={status} />
+                      <span className="meta">x{count}</span>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
             {claims.loading ? <Loading what="claims" /> : null}
             <div className="list">
               {(claims.data?.items ?? [])
