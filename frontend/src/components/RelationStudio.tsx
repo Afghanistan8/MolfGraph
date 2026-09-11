@@ -193,6 +193,16 @@ export function RelationStudio({
           `Accepted. Edge #${settled.edge_id ?? written.value?.edge_id ?? "?"} is now on the Live graph, ` +
             "and a provenance receipt was written.",
         );
+      } else if (settled?.status === "PENDING") {
+        // The leader's own run can succeed locally while the validator round
+        // still disagrees (this adjudication runs an LLM prompt, so validator
+        // outputs can legitimately diverge). When that happens the whole round
+        // is discarded and the claim's on-chain state never changes, so it is
+        // safe -- and often necessary -- to press Adjudicate again.
+        setError(
+          "Validators could not agree on this run, so nothing was recorded. The claim is " +
+            "unchanged and still PENDING: press Adjudicate again to retry.",
+        );
       } else {
         setMessage("Adjudicated. Open the claim below to read the consensus decision.");
       }

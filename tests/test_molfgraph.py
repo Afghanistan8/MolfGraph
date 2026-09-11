@@ -875,7 +875,7 @@ def test_claims_cannot_be_adjudicated_twice(contract, gl_env):
 def test_failed_consensus_never_mints_an_edge(contract, gl_env):
     eid = build_pair(contract, gl_env)
     gl_env.nondet.set_prompt(relation_prompt())
-    gl_env.vm.force_no_consensus = True
+    gl_env.eq_principle.force_no_consensus = True
     claim = json.loads(contract.propose_relation(1, 1, 2, 1, "DIRECT_REPLICATION", json.dumps([eid])))
     outcome = json.loads(contract.adjudicate_relation(claim["claim_id"]))
     assert outcome["edge_id"] == 0

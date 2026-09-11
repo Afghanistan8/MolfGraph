@@ -84,6 +84,7 @@ export function StudyRegistry({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [samples, setSamples] = useState<SampleData | null>(null);
+  const [sampleClaims, setSampleClaims] = useState<number[]>([]);
 
   const [search, setSearch] = useState("");
   const [searchCountry, setSearchCountry] = useState("");
@@ -145,42 +146,127 @@ export function StudyRegistry({
     };
   }
 
-  /** Register every sample study in order and report the pins they landed on. */
+  /**
+   * Put the whole sample pack on chain in dependency order: studies first, then
+   * the hash-pinned evidence, then the relation claims that reference both.
+   *
+   * It deliberately stops before adjudication. A claim is a hypothesis, and
+   * minting an edge is a separate, explicit decision the reader makes.
+   */
   async function registerSamplePack() {
     if (!samples?.studies.length) return;
     setBusy(true);
     setError("");
     setMessage("");
-    const pins: string[] = [];
+    setSampleClaims([]);
+    const done: string[] = [];
     try {
+      // 1. Studies. Each returns the pin the claim will later reference.
+      const pins: Array<{ study_id: number; version: number }> = [];
       for (const sample of samples.studies) {
         const draft = draftFromSample(sample);
         const outcome = await api.write<{ study_id: number; version: number }>(
           "register_study_version",
           [
-            draft.title,
-            draft.country,
-            draft.subject_ref,
-            draft.crime_or_charge,
-            draft.question,
-            draft.method,
-            draft.conclusion,
-            encodeRecords(draft.records),
+            draft.title, draft.country, draft.subject_ref, draft.crime_or_charge,
+            draft.question, draft.method, draft.conclusion, encodeRecords(draft.records),
           ],
         );
-        if (!outcome.finalized) throw new Error(`${sample.title} did not finalise.`);
-        const pin = outcome.value
-          ? `${outcome.value.study_id}:${outcome.value.version}`
-          : "registered";
-        pins.push(`${sample.country} ${pin}`);
+        if (!outcome.finalized || !outcome.value?.study_id) {
+          throw new Error(`${sample.title} did not return a usable pin.`);
+        }
+        pins.push({ study_id: outcome.value.study_id, version: outcome.value.version });
+        done.push(`study ${outcome.value.study_id}:${outcome.value.version}`);
+        setMessage(`Registered ${done.length} of ${samples.studies.length} studies…`);
       }
-      setMessage(`Sample pack registered. Pins: ${pins.join(", ")}. Open Relations to claim between them.`);
+
+      // 2. Hash-pinned evidence, keyed by the id the relations refer to.
+      const evidenceIds: Record<string, number> = {};
+      for (const item of samples.evidence ?? []) {
+        const outcome = await api.write<{ evidence_id: number }>("register_evidence", [
+          item.stable_record_id, item.source_uri, item.expected_sha256,
+          Math.trunc(item.version), "", item.issued_at, item.record_type ?? "",
+        ]);
+        if (!outcome.finalized || !outcome.value?.evidence_id) {
+          throw new Error(`Evidence ${item.stable_record_id} did not return an id.`);
+        }
+        evidenceIds[item.stable_record_id] = outcome.value.evidence_id;
+        done.push(`evidence #${outcome.value.evidence_id}`);
+        setMessage(`Registered evidence ${item.stable_record_id}…`);
+      }
+
+      // 3. Claims. These stay PENDING and draw nothing until adjudicated.
+      const claimIds: number[] = [];
+      for (const relation of samples.proposed_relations ?? []) {
+        const from = pins[relation.from_index];
+        const to = pins[relation.to_index];
+        if (!from || !to) continue;
+        const ids = relation.evidence_stable_ids
+          .map((key) => evidenceIds[key])
+          .filter((value): value is number => typeof value === "number");
+        if (!ids.length) continue;
+        const outcome = await api.write<{ claim_id: number }>("propose_relation", [
+          from.study_id, from.version, to.study_id, to.version,
+          relation.claimed_relation, JSON.stringify(ids),
+        ]);
+        if (!outcome.finalized || !outcome.value?.claim_id) {
+          throw new Error(`Claim ${relation.claimed_relation} did not return an id.`);
+        }
+        claimIds.push(outcome.value.claim_id);
+        done.push(`claim #${outcome.value.claim_id}`);
+      }
+
+      setSampleClaims(claimIds);
+      setMessage(
+        `Sample pack on chain: ${done.join(", ")}. The claims are PENDING and the graph is ` +
+          "unchanged until you adjudicate them below.",
+      );
       studies.reload();
     } catch (cause) {
       setError(
         (cause instanceof Error ? cause.message : String(cause)) +
-          (pins.length ? ` Registered before failing: ${pins.join(", ")}.` : ""),
+          (done.length ? ` Completed before failing: ${done.join(", ")}.` : ""),
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Adjudicate the sample claims. Kept separate from the pack because this is
+   * what can actually mint an edge, and because a round can end without
+   * agreement, in which case the claim stays PENDING and is safe to retry.
+   */
+  async function adjudicateSampleClaims() {
+    if (!sampleClaims.length) return;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    const results: string[] = [];
+    try {
+      for (const claimId of sampleClaims) {
+        await api.write("adjudicate_relation", [Math.trunc(claimId)]);
+        // Never trust the write's own view: read the settled claim back.
+        const settled = await api.read<{ status?: string; decision?: { relation_type?: string } }>(
+          "get_claim",
+          [Math.trunc(claimId)],
+        );
+        const status = settled?.status ?? "UNKNOWN";
+        results.push(
+          status === "ACCEPTED"
+            ? `#${claimId} ACCEPTED as ${settled?.decision?.relation_type}`
+            : `#${claimId} ${status}`,
+        );
+        setMessage(`Adjudicated ${results.join(", ")}…`);
+      }
+      setMessage(
+        `Adjudication finished: ${results.join(", ")}. Any ACCEPTED claim is now an edge on ` +
+          "Live graph. A claim still showing PENDING means validators did not agree on that " +
+          "run; press again to retry.",
+      );
+      studies.reload();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
     }
@@ -259,6 +345,16 @@ export function StudyRegistry({
                   {sample.country} · {sample.title.slice(0, 26)}
                 </button>
               ))}
+              {sampleClaims.length ? (
+                <button
+                  className="small primary"
+                  disabled={busy || !hasWallet}
+                  onClick={adjudicateSampleClaims}
+                  title="Adjudicate the sample claims. Only this can mint an edge."
+                >
+                  Adjudicate sample claims ({sampleClaims.length})
+                </button>
+              ) : null}
               <button
                 className="small primary"
                 disabled={busy || !hasWallet}

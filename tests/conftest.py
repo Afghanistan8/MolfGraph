@@ -240,16 +240,44 @@ class _Nondet:
         self.prompts = []
 
 
+def _decision_key(raw):
+    """The fields a comparative principle must hold steady across runs."""
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return raw
+    if not isinstance(parsed, dict):
+        return raw
+    return tuple(
+        parsed.get(field)
+        for field in (
+            "status", "relation_type", "evidence_pass", "source_set_sha256",
+            "from_study_id", "from_version", "to_study_id", "to_version",
+            "citation_key", "applicability_bucket",
+        )
+    )
+
+
 class _EqPrinciple:
     """Consensus wrappers, with the divergence checks the real runtime makes."""
 
     def __init__(self, nondet):
         self._nondet = nondet
         self.calls = []
+        self.force_no_consensus = False
 
     def prompt_comparative(self, fn, principle=""):
         self.calls.append(("prompt_comparative", principle))
-        return fn()
+        if self.force_no_consensus:
+            raise RuntimeError("validators did not agree under the stated principle")
+        leader = fn()
+        # A comparative principle tolerates prose drift but not a changed
+        # decision, so re-run and reject a leader whose decision-critical
+        # fields move between runs.
+        second = fn()
+        if _decision_key(leader) != _decision_key(second):
+            raise RuntimeError("validators diverged on a decision-critical field")
+        return leader
 
     def strict_eq(self, fn):
         self.calls.append(("strict_eq", ""))
@@ -382,6 +410,7 @@ def gl_env():
     GL.nondet.reset()
     GL.vm.calls = []
     GL.vm.force_no_consensus = False
+    GL.eq_principle.force_no_consensus = False
     GL.eq_principle.calls = []
     GL.message.sender_address = Address(OWNER_ADDRESS)
     GL.message.datetime = None

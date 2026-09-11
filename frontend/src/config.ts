@@ -18,7 +18,7 @@ export const RPC_URL: string =
  */
 export const CONTRACT_ADDRESS = (
   import.meta.env.VITE_MOLFGRAPH_CONTRACT_ADDRESS ||
-  "0x1ab5205a14716EfbC54085B4386876B217a8b2CC"
+  "0x7086C6391D3bbF42F87bA7Ab26e92e50a552a6Ac"
 ).trim() as `0x${string}`;
 
 export const CHAIN_ID = studionet.id;

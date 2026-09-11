@@ -71,6 +71,7 @@ export default function App() {
             phase={api.tx.phase}
             hash={api.tx.hash}
             message={api.tx.message}
+            requestFunds={api.requestFunds}
           />
         </div>
         <nav className="tabs" role="tablist">

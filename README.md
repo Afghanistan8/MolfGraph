@@ -15,65 +15,86 @@ re-fetched and re-hashed against a committed SHA-256 digest before any adjudicat
 
 ## Live deployment
 
-MolfGraph is deployed on GenLayer StudioNet.
+Deployed and verified on GenLayer StudioNet.
 
 | | |
 | --- | --- |
-| Contract | `0x1ab5205a14716EfbC54085B4386876B217a8b2CC` |
-| Network | StudioNet, chain `61999` |
+| Contract | `0x7086C6391D3bbF42F87bA7Ab26e92e50a552a6Ac` |
+| Network | StudioNet, chain `61999`, `https://studio.genlayer.com/api` |
 | Owner | `0x4184bc5E5444F250767E8D33A49817A9B4FB0df3` |
+| Deploy tx | `0xdc5427c1a0ba877d75aab8b15d4dfad9cd80b7c0b764f24e6f931322af5bc731` |
 
-[contracts/molfgraph.py](contracts/molfgraph.py) is the canonical source and is
-**byte-identical to what is live** at that address. I verified this by fetching the deployed
-source over `gen_getContractCode` and comparing SHA-256, not by assuming.
-
-It ships without the VecDB retrieval layer, because the dual `Seq` magic header that
-`genlayermodelwrappers` requires is rejected by the GenVM on both StudioNet and Bradbury.
-`index_study_records` raises a clear unavailable error, `similar_records` returns an empty
-explicitly labelled result, and the console shows no Index button at all rather than one that
-always reverts. Everything else is intact.
-
-[contracts/molfgraph_vecdb.py](contracts/molfgraph_vecdb.py) keeps the VecDB variant for the
-day a runtime accepts that header. It is **not deployable today** and is covered by its own
-opt-in test module so it cannot give false confidence.
-
-### A fresh deploy starts empty
-
-Nothing is pre-seeded. A new deployment has no studies, no analyses, no edges and no receipts,
-so the graph, ledger and receipts panels are legitimately blank until someone writes. Use
-**Register sample pack** on the Studies tab to put the three sample studies on chain, then
-claim a relation between them on Relations.
-
-### SDK pinning, and why
-
-`genlayer-js` is held at **1.x on purpose**. The `2.0.0-rc.1` release candidate encodes
-calldata in a newer wire format:
+### Reads, captured live
 
 ```
-1.x (works here)   0xd4920e06 6d6574686f64 4c 6765745f6f776e6572 00   {"method": "get_owner"}
-2.0.0-rc.1         0xce8c0e00 4c 6765745f6f776e6572 00               no method key
+get_owner       0x4184bc5E5444F250767E8D33A49817A9B4FB0df3
+get_disclaimer  Decision-support only - not legal advice. Professional review required.
+
+get_stats       {"owner":"0x4184bc5E...","stat_alerts":3,"stat_conflicts":0,
+                 "stat_hash_mismatch":3,"stat_insufficient":0,"stat_low_confidence":0,
+                 "stat_unavailable":0,"stat_verified":0,"total_analyses":0,"total_cases":0,
+                 "total_claims":5,"total_edges":1,"total_evidence":6,"total_receipts":18,
+                 "total_studies":3,"total_versions":3}
+
+list_studies    3 studies: "Remote credential reuse under the Computer Access Provisions" (UK),
+                 "...under the Digital Access Offences Act" (US),
+                 "...screened against the Data Custody Amendment" (US)
+
+get_graph       1 accepted edge, 3 nodes
 ```
 
-The deployed StudioNet node rejects the newer form with `execution failed`, which breaks every
-read. The write path in `frontend/src/useGenLayer.ts` calls
-`estimateTransactionFeesForWrite` and `waitForFinalization` **when the SDK exposes them** and
-falls back to `waitForTransactionReceipt({ status: "FINALIZED" })` otherwise, so moving to 2.x
-once StudioNet updates needs only a version bump.
+### The accepted edge
 
-Either way a write is only believed when the transaction finalises **and** its execution
-result is a success. An ACCEPTED-but-reverted transaction never becomes an edge or a ledger
-entry.
+```json
+{
+  "edge_id": 1, "claim_id": 5, "status": "ACCEPTED",
+  "relation_type": "MATERIAL_VARIANT", "confidence": "HIGH",
+  "from_study_id": 1, "from_version": 1,
+  "to_study_id": 2, "to_version": 1,
+  "evidence_pass": true, "evidence_ids": [6],
+  "source_set_sha256": "46555b3d7e4be650ea7777b70a75bc908baa3e95f9932655b65b3d18fa4793b6",
+  "rationale": "The two studies address the identical legal question ... However, Study A is
+    grounded in the jurisdiction of the UK, while Study B is grounded in the US (18 U.S.C. 1030).
+    Because the jurisdictional basis and the underlying statutory provisions are materially
+    different, the relationship is classified as a MATERIAL_VARIANT rather than a
+    DIRECT_REPLICATION."
+}
+```
 
-### Evidence digests are digests of rendered text
+The claim was proposed as `DIRECT_REPLICATION`. Consensus overruled it. That is the design
+working: the proposer states a hypothesis, validators decide.
 
-`expected_sha256` must be the SHA-256 of what `gl.nondet.web.render(url, mode="text")`
-returns, **not** of the raw HTTP body. Hashing the page yourself with curl will not match. The
-digests in `frontend/public/sample_studies.json` were measured on StudioNet. When a publisher
-edits a page the digest changes, adjudication returns `REPAIR_REQUIRED` with the digest the
-validators actually observed, and the Relations panel pre-fills `repair_evidence` with it.
+### Real finalized write hashes
 
-To point the console at it, copy `frontend/.env.example` to `frontend/.env` and set
-`VITE_MOLFGRAPH_CONTRACT_ADDRESS` to the address above.
+```
+register_study_version  0x00d4cd697bf097dcca8c58d7eff3f1063ba23dac71c41562cc4c554cb355b5e3
+register_evidence       0xa383a93a9d64cb121f4fb7c0b016f740ceeb9cd1fab90634b171889fa5cdb55a
+propose_relation        0x1d0cf8d342c713abff22c4848aab299bf37b79f2574ea02fc1d67122145a02e5
+adjudicate_relation     0x97fed5cae0c853a010012d89611c90babfb15a83526f194a4ce6b0c6d8b1b70e  <- minted edge 1
+```
+
+### Two findings worth knowing
+
+**Adjudication needed a different consensus wrapper.** The first deployment used
+`gl.vm.run_nondet_unsafe` with a custom validator that demanded exact agreement on a
+subjective six-way classification. Across thirteen live attempts validators voted
+unanimously "disagree" every time, the round never reached quorum, and no state was ever
+committed: the write returned `FINALIZED` / `SUCCESS` carrying the leader's own decision
+while `get_claim` still read `PENDING`. Adjudication now uses
+`gl.eq_principle.prompt_comparative`, the same wrapper the screening tools already used
+successfully, with a principle that pins the decision-critical fields and lets the rationale
+wording vary. Decisions have persisted on every attempt since.
+
+**Pinned evidence must be render-stable.** `expected_sha256` covers what
+`gl.nondet.web.render` returns, not the raw HTTP body. `legislation.gov.uk` returned three
+different digests across three consecutive adjudications, so it can never satisfy a pinned
+hash and is deliberately not used as evidence. The sample pack pins a static govinfo
+archival page instead, which returned an identical digest across repeated on-chain probes.
+A stale digest is not a dead end: adjudication returns `REPAIR_REQUIRED` carrying the digest
+the validators actually observed, and `repair_evidence` re-pins it.
+
+A fresh deploy starts empty. Nothing is pre-seeded, so the graph, ledger and receipts are
+legitimately blank until someone writes. Use **Register sample pack** on Studies.
 
 ---
 
@@ -159,7 +180,8 @@ in the public analysis ledger.
 | `map_facts_to_provisions` | Which published provisions a fact pattern should be reviewed against |
 | `generate_verification_report` | An auditable report for one pinned study version |
 
-Graph and registry writes: `register_study_version`, `correct_study`, `index_study_records`,
+Graph and registry writes: `register_study_version`, `correct_study`, `index_study_records`
+(present in the ABI but unavailable on this deployment; it raises),
 `register_evidence`, `repair_evidence`, `propose_relation`, `adjudicate_relation`,
 `register_case`, `link_analysis_to_case`, `add_trusted_source`, `remove_trusted_source`.
 
@@ -304,7 +326,7 @@ Set one environment variable, since `frontend/.env` is gitignored and Vite inlin
 build time:
 
 ```
-VITE_MOLFGRAPH_CONTRACT_ADDRESS=0x1ab5205a14716EfbC54085B4386876B217a8b2CC
+VITE_MOLFGRAPH_CONTRACT_ADDRESS=0x7086C6391D3bbF42F87bA7Ab26e92e50a552a6Ac
 ```
 
 Without it the build still succeeds and the site loads empty.
@@ -368,14 +390,18 @@ name to the right address, and hard-lock both addresses in `frontend/src/config.
 
 ## Demo path
 
-1. Register two study versions in **Studies** (the sample loader fills the form).
-2. Index each version's records into VecDB.
-3. Run `verify_statute` in **Screen** and read the grounded result card.
-4. In **Relations**, pin a public source with the SHA-256 of the bytes you fetched.
-5. Propose a version-pinned relation between the two studies.
-6. Run adjudication. Watch the transaction move submitted → pending → finalized.
-7. Open **Live graph**: the accepted edge is drawn, coloured by relation type.
-8. Open **Receipts**: the provenance entry carries the source-set digest that backed it.
+1. Open **Connect wallet** and choose **Create local StudioNet account**. It is
+   funded from the node faucet automatically; **Request StudioNet GEN** retries.
+2. On **Studies**, press **Register sample pack**. That writes three study
+   versions, two hash-pinned evidence items, and two relation claims, in order.
+3. Press **Adjudicate sample claims**. Only this can mint an edge.
+4. Open **Live graph**: an accepted edge is drawn, coloured by relation type.
+5. Open **Receipts**: the provenance entry carries the source-set digest.
+6. Run `verify_statute` in **Screen** and read the grounded result card, then
+   find it in **Ledger**.
+
+There is no indexing step. VecDB is unavailable on this deployment, so the
+Index control is absent rather than present and throwing.
 
 ---
 

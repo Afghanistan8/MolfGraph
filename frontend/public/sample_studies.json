@@ -1,15 +1,15 @@
 {
-  "disclaimer": "Decision-support only — not legal advice. Professional review required. These studies are fictional teaching material about public law. They describe no real person and no real matter.",
-  "digest_note": "expected_sha256 is the SHA-256 of what gl.nondet.web.render(url, mode='text') returns, not of the raw HTTP body. These values were measured on StudioNet. If a publisher edits a page the digest changes, adjudication returns REPAIR_REQUIRED with the observed digest, and repair_evidence re-pins it.",
+  "disclaimer": "Decision-support only \u2014 not legal advice. Professional review required. These studies are fictional teaching material about public law. They describe no real person and no real matter.",
+  "digest_note": "expected_sha256 is the SHA-256 of the bytes gl.nondet.web.render(url, mode='text') returns, measured on live StudioNet via an on-chain probe. Pinned evidence must be render-stable: legislation.gov.uk returned three different digests across three consecutive adjudications, so it is deliberately not used as evidence here. The static govinfo archival page below returned an identical digest across repeated probes. When a digest does go stale, adjudication returns REPAIR_REQUIRED carrying the digest the validators actually observed, and repair_evidence re-pins it at a higher version. Records without a source_uri carry no digest by design; only 'evidence' entries are pinned.",
   "evidence": [
     {
-      "stable_record_id": "uk-cma-1990-s1",
-      "source_uri": "https://www.legislation.gov.uk/ukpga/1990/18/section/1",
-      "expected_sha256": "94909ef526bc6cfc06d18a4c618f58c55cd54d8d38b75f344c3a6d3c88b64b05",
+      "stable_record_id": "us-18usc1030-2011",
+      "source_uri": "https://www.govinfo.gov/content/pkg/USCODE-2011-title18/html/USCODE-2011-title18-partI-chap47-sec1030.htm",
+      "expected_sha256": "7f1459f7532960a2fe94ad46932765d7029762dd53b47523ec45c50c95fd94c0",
       "version": 1,
-      "issued_at": "1990-06-29",
+      "issued_at": "2011-01-03",
       "record_type": "CRIME",
-      "measured_bytes": 6515
+      "measured_bytes": 40483
     },
     {
       "stable_record_id": "us-uscode-collection",
@@ -34,8 +34,12 @@
         {
           "record_type": "CRIME",
           "text": "Charged conduct: continued use of credentials issued during a contract, after the contracting party recorded revocation but before the credentials were technically disabled.",
-          "source_uris": ["https://www.legislation.gov.uk/ukpga/1990/18/section/1"],
-          "expected_sha256": ["94909ef526bc6cfc06d18a4c618f58c55cd54d8d38b75f344c3a6d3c88b64b05"]
+          "source_uris": [
+            "https://www.govinfo.gov/content/pkg/USCODE-2011-title18/html/USCODE-2011-title18-partI-chap47-sec1030.htm"
+          ],
+          "expected_sha256": [
+            "7f1459f7532960a2fe94ad46932765d7029762dd53b47523ec45c50c95fd94c0"
+          ]
         },
         {
           "record_type": "QUESTION",
@@ -69,8 +73,12 @@
         {
           "record_type": "CRIME",
           "text": "Charged conduct: continued use of credentials issued during employment, after the employer recorded an administrative revocation but before the credentials were technically disabled.",
-          "source_uris": ["https://www.govinfo.gov/app/collection/uscode"],
-          "expected_sha256": ["ec2b368b84a22419156ebc77867324f36f205ee649f99e39f007acd3e8846ced"]
+          "source_uris": [
+            "https://www.govinfo.gov/content/pkg/USCODE-2011-title18/html/USCODE-2011-title18-partI-chap47-sec1030.htm"
+          ],
+          "expected_sha256": [
+            "7f1459f7532960a2fe94ad46932765d7029762dd53b47523ec45c50c95fd94c0"
+          ]
         },
         {
           "record_type": "QUESTION",
@@ -104,8 +112,12 @@
         {
           "record_type": "JUDGEMENT",
           "text": "The publisher's annotation records that a later amending instrument inserted an intent requirement into the same subsection.",
-          "source_uris": ["https://www.govinfo.gov/app/collection/uscode"],
-          "expected_sha256": ["ec2b368b84a22419156ebc77867324f36f205ee649f99e39f007acd3e8846ced"]
+          "source_uris": [
+            "https://www.govinfo.gov/content/pkg/USCODE-2011-title18/html/USCODE-2011-title18-partI-chap47-sec1030.htm"
+          ],
+          "expected_sha256": [
+            "7f1459f7532960a2fe94ad46932765d7029762dd53b47523ec45c50c95fd94c0"
+          ]
         },
         {
           "record_type": "QUESTION",
@@ -133,14 +145,18 @@
       "from_index": 0,
       "to_index": 1,
       "claimed_relation": "DIRECT_REPLICATION",
-      "evidence_stable_ids": ["uk-cma-1990-s1"],
+      "evidence_stable_ids": [
+        "us-18usc1030-2011"
+      ],
       "rationale": "Same question, same element-by-element method, and consistent conclusions across two jurisdictions whose published elements align."
     },
     {
       "from_index": 1,
       "to_index": 2,
       "claimed_relation": "CONTRADICTORY_RESULT",
-      "evidence_stable_ids": ["us-uscode-collection"],
+      "evidence_stable_ids": [
+        "us-18usc1030-2011"
+      ],
       "rationale": "Comparable question and method, but the amending instrument adds an element that reverses the conclusion."
     }
   ]

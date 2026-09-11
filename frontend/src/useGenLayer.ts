@@ -43,6 +43,8 @@ export interface GenLayerApi {
   resetTx: () => void;
   version: number;
   bump: () => void;
+  /** Ask StudioNet to fund an address. Returns why it failed, if it did. */
+  requestFunds: (address: string) => Promise<{ funded: boolean; error?: string }>;
 }
 
 function parseJson<T>(raw: unknown): T {
@@ -54,12 +56,41 @@ function parseJson<T>(raw: unknown): T {
   }
 }
 
-/** Pull the contract's return value out of a finalized transaction. */
+/** Read the leader receipt off a transaction, regardless of SDK key casing. */
+function leaderReceiptOf(transaction: any): any {
+  const cd = transaction?.consensus_data ?? transaction?.consensusData;
+  return Array.isArray(cd?.leader_receipt) ? cd.leader_receipt[0] : cd?.leader_receipt;
+}
+
+/**
+ * Pull the contract's return value out of a finalized transaction.
+ *
+ * The node wraps a write's return value two JSON layers deep:
+ * `leader_receipt.result.payload.readable` is a JSON string containing the
+ * contract's own `_canon_json(...)` string, so it takes two `JSON.parse`
+ * calls to reach the actual object. Get this wrong and every write silently
+ * returns null, which is why callers used to fall back to re-reading the
+ * ledger after every write.
+ */
 function decodeReturn(transaction: any): unknown {
   if (!transaction) return null;
-  const leader = Array.isArray(transaction?.consensusData?.leader_receipt)
-    ? transaction.consensusData.leader_receipt[0]
-    : transaction?.consensusData?.leader_receipt;
+  const leader = leaderReceiptOf(transaction);
+  const readable = leader?.result?.payload?.readable;
+
+  if (typeof readable === "string") {
+    try {
+      const once = JSON.parse(readable);
+      if (typeof once !== "string") return once;
+      try {
+        return JSON.parse(once);
+      } catch {
+        return once;
+      }
+    } catch {
+      /* fall through to the legacy candidates below */
+    }
+  }
+
   const candidates = [
     transaction?.result,
     transaction?.returnValue,
@@ -81,9 +112,7 @@ function statusOf(transaction: any): string {
 }
 
 function executionOf(transaction: any): string {
-  const leader = Array.isArray(transaction?.consensusData?.leader_receipt)
-    ? transaction.consensusData.leader_receipt[0]
-    : transaction?.consensusData?.leader_receipt;
+  const leader = leaderReceiptOf(transaction);
   return String(
     transaction?.txExecutionResultName ??
       leader?.execution_result ??
@@ -253,7 +282,12 @@ export function useGenLayer(wallet: WalletState): GenLayerApi {
           }
         }
 
-        setTx({ phase: "submitted", message: `${functionName}: confirm to sign…` });
+        setTx({
+          phase: "submitted",
+          message: call.fees
+            ? `${functionName}: confirm to sign…`
+            : `${functionName}: fees skipped, this SDK has no estimator. Confirm to sign…`,
+        });
         const hash: string = await (client as any).writeContract(call);
 
         setTx({ phase: "pending", hash, message: `${functionName}: awaiting consensus…` });
@@ -292,9 +326,29 @@ export function useGenLayer(wallet: WalletState): GenLayerApi {
     [assertReady, bump, signingClient, wallet.connected],
   );
 
+  const requestFunds = useCallback(
+    async (address: string) => {
+      const fund = (readClient as any)?.fundAccount;
+      if (typeof fund !== "function") {
+        return { funded: false, error: "This node exposes no faucet method." };
+      }
+      try {
+        await fund.call(readClient, { address, amount: 10n ** 18n });
+        return { funded: true };
+      } catch (cause) {
+        return {
+          funded: false,
+          error: cause instanceof Error ? cause.message : String(cause),
+        };
+      }
+    },
+    [readClient],
+  );
+
   return {
     ready,
     canWrite,
+    requestFunds,
     address: CONTRACT_ADDRESS,
     read,
     readRaw,

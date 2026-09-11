@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CHAIN_HELP,
   CHAIN_ID,
@@ -23,11 +23,13 @@ export function WalletBar({
   phase,
   hash,
   message,
+  requestFunds,
 }: {
   wallet: WalletState;
   phase: string;
   hash?: string;
   message?: string;
+  requestFunds: (address: string) => Promise<{ funded: boolean; error?: string }>;
 }) {
   const [open, setOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -35,6 +37,8 @@ export function WalletBar({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState("");
+  const [funding, setFunding] = useState("");
+  const [autoFund, setAutoFund] = useState(false);
 
   function flash(what: string) {
     setCopied(what);
@@ -50,11 +54,33 @@ export function WalletBar({
     else setOpen(false);
   }
 
+  /** Ask the node's faucet, and say plainly what happened either way. */
+  async function fund(address: string) {
+    setFunding("requesting");
+    setError("");
+    const result = await requestFunds(address);
+    setFunding(result.funded ? "funded" : "failed");
+    if (!result.funded) {
+      setError(
+        `Faucet did not fund this address (${result.error ?? "unknown reason"}). ` +
+          "Open Studio and use the droplet control on the account selector, then retry.",
+      );
+    }
+    setTimeout(() => setFunding(""), 4000);
+  }
+
   function doCreateLocal() {
     setError("");
     const result = wallet.createLocal();
-    if (!result.ok) setError(result.error ?? "Could not create a local account.");
-    else setOpen(false);
+    if (!result.ok) {
+      setError(result.error ?? "Could not create a local account.");
+      return;
+    }
+    setOpen(false);
+    // A brand new account has no GEN. The address lands on the next render, so
+    // arm the auto-fund and let the effect below call the faucet, rather than
+    // leaving the visitor stranded on a marketing page.
+    setAutoFund(true);
   }
 
   function doImport() {
@@ -79,6 +105,14 @@ export function WalletBar({
   }
 
   const isLocal = wallet.mode === "local";
+
+  useEffect(() => {
+    if (autoFund && isLocal && wallet.address) {
+      setAutoFund(false);
+      void fund(wallet.address);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFund, isLocal, wallet.address]);
 
   return (
     <div className="wallet">
@@ -131,8 +165,22 @@ export function WalletBar({
               {copied === "addr" ? "Copied" : "Copy address"}
             </button>
 
+            {isLocal ? (
+              <button
+                className="small"
+                disabled={funding === "requesting"}
+                onClick={() => wallet.address && fund(wallet.address)}
+                title="Ask the StudioNet faucet to fund this account"
+              >
+                {funding === "requesting"
+                  ? "Requesting…"
+                  : funding === "funded"
+                    ? "Funded"
+                    : "Request StudioNet GEN"}
+              </button>
+            ) : null}
             <a className="small btn-link" href={FAUCET_URL} target="_blank" rel="noreferrer noopener">
-              Get GEN
+              Studio faucet
             </a>
 
             <button className="small ghost" onClick={wallet.disconnect}>
