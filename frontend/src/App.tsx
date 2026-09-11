@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { CONTRACT_ADDRESS, DISCLAIMER, RPC_URL, explorerAddress } from "./config";
+import { CONTRACT_ADDRESS, DISCLAIMER } from "./config";
 import { useWallet } from "./useWallet";
-import { useGenLayer, useAsyncView } from "./useGenLayer";
+import { useGenLayer } from "./useGenLayer";
 import { WalletBar } from "./components/WalletBar";
 import { Alerts } from "./components/Alerts";
 import { Cases } from "./components/Cases";
@@ -13,7 +13,7 @@ import { ScreenTools } from "./components/ScreenTools";
 import { Sources } from "./components/Sources";
 import { Stats } from "./components/Stats";
 import { StudyRegistry } from "./components/StudyRegistry";
-import { Hash, Notice } from "./components/ui";
+import { Notice } from "./components/ui";
 
 type TabId =
   | "screen"
@@ -49,8 +49,6 @@ export default function App() {
   const api = useGenLayer(wallet);
   const canWrite = api.canWrite;
 
-  // Surfaced in the footer so a broken deployment is visible rather than silent.
-  const owner = useAsyncView<string>(api, () => api.read<string>("get_owner", []), []);
 
   function pin(studyId: number, version: number) {
     if (!pinnedFrom) setPinnedFrom({ studyId, version });
@@ -137,30 +135,6 @@ export default function App() {
           outcomes. Every output is verified reference information grounded in public sources and
           requires professional review.
         </p>
-        <div className="footer-meta">
-          <span>
-            <b>Contract</b>{" "}
-            <a
-              href={explorerAddress(CONTRACT_ADDRESS)}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="mono"
-            >
-              {CONTRACT_ADDRESS || "not configured"}
-            </a>
-          </span>
-          <span>
-            <b>Owner</b>{" "}
-            {owner.error ? (
-              <span className="footer-err">read failed: {owner.error.slice(0, 80)}</span>
-            ) : owner.data ? (
-              <Hash value={owner.data} />
-            ) : (
-              <span className="mono">reading…</span>
-            )}
-          </span>
-          <span className="mono">{RPC_URL}</span>
-        </div>
       </footer>
     </div>
   );
