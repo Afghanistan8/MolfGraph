@@ -141,7 +141,7 @@ export function Notice({
 }
 
 export function Loading({ what }: { what: string }) {
-  return <div className="spinner">Reading {what} from Bradbury…</div>;
+  return <div className="spinner">Reading {what} from StudioNet…</div>;
 }
 
 export function Disclaimer({ text }: { text: string }) {
